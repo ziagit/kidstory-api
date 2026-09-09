@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import categories, health, stories
+from .http_client import lifespan
+from .routers import categories, distance, health, stories
 
 app = FastAPI(
     title="Kidstory API",
@@ -10,9 +11,12 @@ app = FastAPI(
         "REST API for the Kidstory story catalog. Reads are public; creating, "
         "updating and deleting stories requires the `X-API-Key` header. Premium "
         "stories are redacted server-side unless the caller sends a Supabase "
-        "access token belonging to a reader who has purchased full access."
+        "access token belonging to a reader who has purchased full access.\n\n"
+        "Also exposes `GET /distance`, a self-contained utility that returns the "
+        "driving distance and duration between two free-text addresses."
     ),
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 settings = get_settings()
@@ -27,6 +31,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(categories.router)
 app.include_router(stories.router)
+app.include_router(distance.router)
 
 
 @app.get("/", tags=["meta"])

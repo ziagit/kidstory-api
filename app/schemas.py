@@ -135,3 +135,27 @@ class Category(CamelModel):
 class Health(CamelModel):
     status: str
     database: str
+
+
+class Place(CamelModel):
+    """A geocoded address."""
+
+    query: str
+    display_name: str
+    latitude: float
+    longitude: float
+
+
+class DistanceResult(CamelModel):
+    """Driving distance and duration between two geocoded addresses."""
+
+    origin: Place
+    destination: Place
+    distance_meters: float
+    distance_km: float
+    distance_miles: float
+    duration_seconds: float
+    duration_minutes: float
+    duration_text: str
+    straight_line_km: float
+    profile: str = "driving"

@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     # Comma-separated origins allowed to call this API from a browser.
     cors_origins: str = "http://localhost:3000"
 
+    # Distance service. Both defaults are free, keyless OpenStreetMap services;
+    # point them at self-hosted instances for anything beyond light testing.
+    nominatim_url: str = "https://nominatim.openstreetmap.org"
+    osrm_url: str = "https://router.project-osrm.org"
+    # Nominatim's usage policy requires a descriptive, contactable User-Agent.
+    geo_user_agent: str = "kidstory-api/0.1 (https://github.com/ziagit)"
+    geo_timeout_seconds: float = 15.0
+
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
