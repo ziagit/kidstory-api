@@ -1,0 +1,31 @@
+# Render Blueprint — creates the API as a free Docker web service.
+# Secrets are marked `sync: false` so they're entered in the Render dashboard,
+# never committed. Render sets PORT itself (10000); the Dockerfile honours it.
+services:
+  - type: web
+    name: kidstory-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: KIDSTORY_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://storyland-sigma.vercel.app
+      # No model host yet — leaves POST /stories/generate answering 503.
+      - key: STORY_MODEL_URL
+        value: ""
+      - key: STORY_MODEL_API_KEY
+        sync: false
+      - key: MCP_BEARER_TOKEN
+        sync: false
+      - key: PUBLIC_HOSTS
+        value: kidstory-api.onrender.com

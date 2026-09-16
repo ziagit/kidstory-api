@@ -169,32 +169,33 @@ and `PUBLIC_HOSTS`.
 .venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
-## Deploying (Hugging Face Spaces, free)
+## Deploying
 
-Two Docker Spaces, both on the free CPU tier:
+The `Dockerfile` runs anywhere that sets `$PORT` (Render, Cloud Run, Railway, Fly, HF
+Spaces). Two containers are involved: this API, and the model server in
+[`deploy/model-space/`](deploy/model-space/README.md).
 
-1. **Model Space** — `deploy/model-space/` is a complete Space: it converts the Hub model
-   to GGUF at build time and serves it with llama.cpp. Create a Docker Space (e.g.
-   `ziaflutter/kidstory-model`), upload that folder's `Dockerfile` and `README.md`, and
-   add a `LLAMA_API_KEY` secret.
-2. **API Space** — this repo is itself a Space (`Dockerfile` + the front matter at the top
-   of this README). Create a Docker Space (e.g. `ziaflutter/kidstory-api`), push this repo
-   to it, and add every variable from `.env.example` as a secret, with
-   `STORY_MODEL_URL=https://<user>-kidstory-model.hf.space/v1`, `STORY_MODEL_API_KEY` equal
-   to the model Space's `LLAMA_API_KEY`, and `PUBLIC_HOSTS=<user>-kidstory-api.hf.space`.
+### API on Render (free tier)
 
-```bash
-hf repos create ziaflutter/kidstory-model --repo-type space --space-sdk docker
-hf upload ziaflutter/kidstory-model deploy/model-space . --repo-type space
+`render.yaml` is a Render Blueprint. Push this repo to GitHub, then in Render choose
+**New → Blueprint**, pick the repo, and fill in the `sync: false` secrets
+(`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `KIDSTORY_API_KEY`,
+optionally `MCP_BEARER_TOKEN`). The free tier sleeps after 15 minutes idle and takes
+~50 s to wake, so the site's first request after a quiet spell is slow.
 
-hf repos create ziaflutter/kidstory-api --repo-type space --space-sdk docker
-git remote add hf https://huggingface.co/spaces/ziaflutter/kidstory-api
-git push hf master:main
-```
+Then point the Nuxt app at it: `KIDSTORY_API_URL=https://kidstory-api.onrender.com`
+and the matching `KIDSTORY_API_KEY` in Vercel's env vars (and the GitHub Actions
+secrets for the manual fallback workflow).
 
-Free Spaces sleep after 48 hours without traffic and wake on the next request; the daily
-cron in the Nuxt app keeps both warm. The same `Dockerfile` also runs on Cloud Run,
-Railway or Render — they all set `$PORT`, which the image honours.
+### Model server
+
+The model needs ~2 GB of RAM, more than any card-free free tier offers (Render and
+Koyeb give 512 MB), and Hugging Face now requires a PRO subscription for Docker
+Spaces — so `deploy/model-space/` is written as a Space but is host-agnostic. Options:
+Google Cloud Run or Modal (both $0 at this traffic with a card on file), an Oracle
+Always Free VM, or your own machine behind a Cloudflare Tunnel. Whichever you pick,
+set `STORY_MODEL_URL=https://<model-host>/v1` and `STORY_MODEL_API_KEY` on the API;
+until then `POST /stories/generate` answers 503 and everything else works.
 
 ## Tests
 
