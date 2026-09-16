@@ -22,14 +22,14 @@ from .schemas import ChatMessage, StoryDraft
 # actual steering happens in the user message, which matches the SFT format.
 SYSTEM_PROMPT = (
     "You are a storyteller for young children. Write short, warm, gentle stories "
-    "with a kind main character and a happy ending. Nothing scary or violent."
+    "of two or three short paragraphs, with a kind main character and a happy "
+    "ending. Nothing scary or violent. Reply with the story text only."
 )
 
 # The studio keeps the last few turns so "make it shorter" style follow-ups
 # reach the model with the story it wrote before. Keep that bounded: this model
 # has a 2048-token context and a story is ~400 tokens.
 MAX_HISTORY_TURNS = 4
-MAX_NEW_TOKENS = 450
 TEMPERATURE = 0.8
 
 # Words per minute a young reader (or a parent reading aloud) gets through.
@@ -118,7 +118,7 @@ async def _complete(messages: list[dict[str, str]]) -> str:
         completion = await _client().chat_completion(
             messages,
             model=settings.story_model_name,
-            max_tokens=MAX_NEW_TOKENS,
+            max_tokens=settings.story_model_max_tokens,
             temperature=TEMPERATURE,
             top_p=0.9,
             # The fine-tune occasionally runs on into the next turn marker
@@ -127,8 +127,18 @@ async def _complete(messages: list[dict[str, str]]) -> str:
         )
     except Exception as exc:  # noqa: BLE001 - any transport/HTTP failure is a 502 to our caller
         raise StoryGenerationError(502, f"The story model could not be reached: {exc}") from exc
-    content = completion.choices[0].message.content if completion.choices else None
-    return (content or "").strip()
+    if not completion.choices:
+        return ""
+    content = (completion.choices[0].message.content or "").strip()
+    if completion.choices[0].finish_reason == "length":
+        content = _trim_to_last_sentence(content)
+    return content
+
+
+def _trim_to_last_sentence(text: str) -> str:
+    """A reply cut off by the token budget ends mid-sentence; drop the fragment."""
+    cut = max(text.rfind(end) for end in (".", "!", "?", "\u201d", '"'))
+    return text[: cut + 1] if cut > 0 else text
 
 
 def _build_user_message(topic: str, category: str | None, age_range: str | None) -> str:
@@ -167,7 +177,8 @@ def _pop_title(paragraphs: list[str]) -> tuple[str | None, list[str]]:
     """If the model led with a title line, take it off the top of the body."""
     if not paragraphs:
         return None, paragraphs
-    first = paragraphs[0].strip()
+    # Markdown emphasis ("**The Brave Mouse**") is common from larger models.
+    first = paragraphs[0].strip().strip("*_ ").strip()
     match = re.match(r"^(?:#+\s*|title:\s*)?[\"“]?(.+?)[\"”]?$", first, re.IGNORECASE)
     candidate = match.group(1).strip() if match else first
     looks_like_title = (

@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     story_model_api_key: str = ""
     story_model_name: str = "kidstory-story-model"
     story_model_timeout: float = 120.0
+    # Reply budget. ~450 suits the 1.1B fine-tune's short stories; a large
+    # hosted model (e.g. OpenRouter, which is OpenAI-compatible and works here
+    # as a stand-in) writes longer and wants ~1200.
+    story_model_max_tokens: int = 450
 
     # Bearer token required on /mcp. Blank leaves /mcp open but read-only — the
     # write and generate tools are only registered when a token protects them,

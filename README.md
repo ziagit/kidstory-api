@@ -123,10 +123,14 @@ emoji and tags from keywords in the text, read time from word count — and the 
 `category`/`ageRange` pass straight through. On a free CPU Space a story takes roughly
 20–40 seconds; the `/studio` UI and the daily cron already wait that long.
 
-The model is called through `huggingface_hub`'s `InferenceClient`, pointed at an
-OpenAI-compatible server by `STORY_MODEL_URL`. That server is the llama.cpp Space in
+The model is called through `huggingface_hub`'s `InferenceClient`, pointed at any
+OpenAI-compatible server by `STORY_MODEL_URL` / `STORY_MODEL_NAME` / `STORY_MODEL_API_KEY`.
+The intended server is the llama.cpp container in
 [`deploy/model-space/`](deploy/model-space/README.md) — Hugging Face's shared inference
-API doesn't serve custom fine-tunes, so the model runs in a container of its own.
+API doesn't serve custom fine-tunes, so the model needs a host of its own (a VPS). Until
+that exists, the same endpoint runs against **OpenRouter** as a stand-in
+(`STORY_MODEL_URL=https://openrouter.ai/api/v1`, a free model, `STORY_MODEL_MAX_TOKENS=1200`);
+swapping to the fine-tune later is an env-var change, nothing in the site moves.
 
 ### MCP
 

@@ -139,3 +139,16 @@ def test_topics_with_instruction_phrasing_become_clean_titles():
     draft = draft_from_text("A story.", topic="Please write me a short bedtime story about the little owl who couldn't sleep", category="bedtime", age_range=None)
     assert draft.title == "The Little Owl Who Couldn't Sleep"
     assert draft.emoji == "🦉"
+
+
+def test_markdown_title_lines_are_cleaned():
+    draft = draft_from_text("**The Moonlit Pond**\n\nA frog sat by the pond.", topic="a frog", category=None, age_range=None)
+    assert draft.title == "The Moonlit Pond"
+    assert draft.body == ["A frog sat by the pond."]
+
+
+def test_a_reply_cut_off_by_the_token_budget_loses_its_fragment():
+    from app.story_generator import _trim_to_last_sentence
+
+    assert _trim_to_last_sentence("One. Two! Three? Four fragm") == "One. Two! Three?"
+    assert _trim_to_last_sentence("no terminator at all") == "no terminator at all"
