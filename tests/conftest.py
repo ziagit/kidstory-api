@@ -67,9 +67,10 @@ def client(store, monkeypatch) -> TestClient:
         monkeypatch.setattr(module, "public_client", lambda: fake, raising=False)
         monkeypatch.setattr(module, "admin_client", lambda: fake, raising=False)
 
-    from app.main import app
+    from app.main import create_app
 
-    with TestClient(app) as test_client:
+    # A fresh app per test: the MCP session manager inside it can only be started once.
+    with TestClient(create_app()) as test_client:
         yield test_client
 
     get_settings.cache_clear()

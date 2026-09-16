@@ -23,9 +23,33 @@ class Settings(BaseSettings):
     # Comma-separated origins allowed to call this API from a browser.
     cors_origins: str = "http://localhost:3000"
 
+    # Story model server — an OpenAI-compatible endpoint (the llama.cpp Space in
+    # deploy/model-space/ serving ziaflutter/tinyllama-cat-mouse-story), called
+    # through huggingface_hub's InferenceClient. Blank disables /stories/generate.
+    story_model_url: str = ""
+    story_model_api_key: str = ""
+    story_model_name: str = "kidstory-story-model"
+    story_model_timeout: float = 120.0
+
+    # Bearer token required on /mcp. Blank leaves /mcp open but read-only — the
+    # write and generate tools are only registered when a token protects them,
+    # so a public /mcp can never spend the server's own KIDSTORY_API_KEY.
+    mcp_bearer_token: str = ""
+
+    # Comma-separated hostnames this server is publicly reached through (e.g.
+    # "ziaflutter-kidstory-api.hf.space"). Enables the MCP transport's
+    # DNS-rebinding protection for those hosts; blank turns the check off.
+    public_hosts: str = ""
 
     def cors_origin_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return _split_csv(self.cors_origins)
+
+    def public_host_list(self) -> list[str]:
+        return _split_csv(self.public_hosts)
+
+
+def _split_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 @lru_cache

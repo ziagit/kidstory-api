@@ -1,0 +1,13 @@
+.venv/
+venv/
+.git/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+tests/
+deploy/
+.claude/

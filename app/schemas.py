@@ -136,3 +136,39 @@ class Health(CamelModel):
     status: str
     database: str
 
+
+class ChatMessage(CamelModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class StoryDraft(CamelModel):
+    """What /stories/generate returns — the same shape /studio's editor works with.
+
+    Everything here is accepted as-is by POST /stories (StoryCreate), so a client
+    can publish a draft without reshaping it.
+    """
+
+    title: str
+    emoji: str
+    excerpt: str
+    category: CategorySlug
+    age_range: AgeRange
+    read_time_minutes: int
+    tags: list[str]
+    body: list[str]
+
+
+class StoryGenerateRequest(CamelModel):
+    topic: Annotated[str, Field(min_length=1, max_length=1000)]
+    category: CategorySlug | None = None
+    age_range: AgeRange | None = None
+    # Prior turns of a /studio conversation, so "make it shorter" style follow-ups
+    # reach the model with the story it wrote before. Trimmed server-side.
+    history: list[ChatMessage] = []
+
+
+class StoryGenerateResponse(CamelModel):
+    draft: StoryDraft
+    # The conversation including this turn, for the client to send back next time.
+    history: list[ChatMessage]
