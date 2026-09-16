@@ -76,3 +76,22 @@ def test_public_hosts_enable_dns_rebinding_protection(client, monkeypatch):
         # Same app, unexpected Host header: rejected before it reaches a session.
         spoofed = api.post("/mcp", json=INITIALIZE, headers={**MCP_HEADERS, "Host": "evil.example.net"})
         assert spoofed.status_code == 421
+
+
+def test_stateless_mode_answers_each_request_on_its_own(client, monkeypatch):
+    """Serverless hosts get no session continuity — every request must stand alone."""
+    monkeypatch.setenv("MCP_STATELESS", "1")
+    get_settings.cache_clear()
+    with TestClient(create_app()) as api:
+        first = api.post("/mcp", json=INITIALIZE, headers=MCP_HEADERS)
+        assert first.status_code == 200
+        assert first.headers["content-type"].startswith("application/json")
+        assert "mcp-session-id" not in first.headers
+        # A tools/list with no session id at all still works.
+        listed = api.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            headers=MCP_HEADERS,
+        )
+        assert listed.status_code == 200
+        assert {t["name"] for t in listed.json()["result"]["tools"]} == {"list_categories", "list_stories", "get_story"}

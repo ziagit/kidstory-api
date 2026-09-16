@@ -94,7 +94,12 @@ def create_app() -> FastAPI:
     app.state.mcp_server = mcp_server
     # host="0.0.0.0" opts out of the loopback-only default; the real host check
     # is the explicit transport_security built from PUBLIC_HOSTS.
-    mcp_app: ASGIApp = mcp_server.streamable_http_app(host="0.0.0.0", transport_security=_transport_security(settings))
+    mcp_app: ASGIApp = mcp_server.streamable_http_app(
+        host="0.0.0.0",
+        transport_security=_transport_security(settings),
+        stateless_http=settings.mcp_stateless,
+        json_response=settings.mcp_stateless,
+    )
     if settings.mcp_bearer_token:
         mcp_app = BearerTokenGate(mcp_app, settings.mcp_bearer_token)
 

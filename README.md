@@ -175,23 +175,31 @@ The `Dockerfile` runs anywhere that sets `$PORT` (Render, Cloud Run, Railway, Fl
 Spaces). Two containers are involved: this API, and the model server in
 [`deploy/model-space/`](deploy/model-space/README.md).
 
-### API on Render (free tier)
+### API on Vercel (Hobby, free, no card)
 
-`render.yaml` is a Render Blueprint. Push this repo to GitHub, then in Render choose
-**New → Blueprint**, pick the repo, and fill in the `sync: false` secrets
-(`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `KIDSTORY_API_KEY`,
-optionally `MCP_BEARER_TOKEN`). The free tier sleeps after 15 minutes idle and takes
-~50 s to wake, so the site's first request after a quiet spell is slow.
+Vercel's Python runtime detects the FastAPI app in `app/main.py` with zero config
+(`vercel.json` only raises `maxDuration` and trims the bundle). In the Vercel dashboard:
+**Add New → Project → Import `ziagit/kidstory-api`**, add the environment variables from
+`.env.example` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`KIDSTORY_API_KEY`, `CORS_ORIGINS`, `PUBLIC_HOSTS=<project>.vercel.app`), and deploy.
+Every push to `master` redeploys.
 
-Then point the Nuxt app at it: `KIDSTORY_API_URL=https://kidstory-api.onrender.com`
-and the matching `KIDSTORY_API_KEY` in Vercel's env vars (and the GitHub Actions
+Serverless means no process outlives a burst of requests, so `/mcp` runs **stateless**
+there (`MCP_STATELESS`, on automatically when Vercel's `VERCEL` env var is present):
+one JSON response per request, no session ids. MCP clients handle that transparently.
+
+Then point the Nuxt app at it: `KIDSTORY_API_URL=https://<project>.vercel.app` and the
+matching `KIDSTORY_API_KEY` in the site's Vercel env vars (and the GitHub Actions
 secrets for the manual fallback workflow).
+
+Render's free tier and HF Docker Spaces both require a card or a subscription now; the
+`Dockerfile` still works on either, or on Cloud Run / Railway / Fly, if that changes.
 
 ### Model server
 
-The model needs ~2 GB of RAM, more than any card-free free tier offers (Render and
-Koyeb give 512 MB), and Hugging Face now requires a PRO subscription for Docker
-Spaces — so `deploy/model-space/` is written as a Space but is host-agnostic. Options:
+The model needs ~2 GB of RAM and a real CPU — nothing serverless-and-free runs it, and
+Hugging Face now requires a PRO subscription for Docker Spaces — so `deploy/model-space/`
+is written as a Space but is host-agnostic. Options:
 Google Cloud Run or Modal (both $0 at this traffic with a card on file), an Oracle
 Always Free VM, or your own machine behind a Cloudflare Tunnel. Whichever you pick,
 set `STORY_MODEL_URL=https://<model-host>/v1` and `STORY_MODEL_API_KEY` on the API;

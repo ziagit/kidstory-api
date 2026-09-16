@@ -1,5 +1,7 @@
+import os
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,9 +39,14 @@ class Settings(BaseSettings):
     mcp_bearer_token: str = ""
 
     # Comma-separated hostnames this server is publicly reached through (e.g.
-    # "ziaflutter-kidstory-api.hf.space"). Enables the MCP transport's
-    # DNS-rebinding protection for those hosts; blank turns the check off.
+    # "kidstory-api.vercel.app"). Enables the MCP transport's DNS-rebinding
+    # protection for those hosts; blank turns the check off.
     public_hosts: str = ""
+
+    # Serverless hosts (Vercel sets VERCEL=1) spin up a fresh process per burst
+    # of requests, so MCP sessions can't live in memory: run the transport
+    # stateless, one plain JSON response per request. Defaults on under Vercel.
+    mcp_stateless: bool = Field(default_factory=lambda: bool(os.environ.get("VERCEL")))
 
     def cors_origin_list(self) -> list[str]:
         return _split_csv(self.cors_origins)
