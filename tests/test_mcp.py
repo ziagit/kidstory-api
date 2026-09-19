@@ -95,3 +95,13 @@ def test_stateless_mode_answers_each_request_on_its_own(client, monkeypatch):
         )
         assert listed.status_code == 200
         assert {t["name"] for t in listed.json()["result"]["tools"]} == {"list_categories", "list_stories", "get_story"}
+
+
+def test_public_writes_opt_in_registers_write_tools_without_a_token(client, monkeypatch):
+    monkeypatch.setenv("MCP_BEARER_TOKEN", "")
+    monkeypatch.setenv("MCP_PUBLIC_WRITES", "1")
+    get_settings.cache_clear()
+    with TestClient(create_app()) as api:
+        assert "create_story" in _tool_names(api.app) and "delete_story" in _tool_names(api.app)
+        # No gate: an anonymous initialize goes straight through.
+        assert api.post("/mcp", json=INITIALIZE, headers=MCP_HEADERS).status_code == 200

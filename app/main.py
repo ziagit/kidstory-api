@@ -89,8 +89,10 @@ def create_app() -> FastAPI:
     async def root() -> dict[str, str]:
         return {"name": "Kidstory API", "docs": "/docs", "health": "/health", "mcp": "/mcp"}
 
-    # Write and generate tools exist only behind a bearer token — see mcp_server.py.
-    mcp_server = build_mcp_server(app, include_writes=bool(settings.mcp_bearer_token))
+    # Write and generate tools exist behind a bearer token, or — explicit opt-in —
+    # on the open endpoint. See mcp_server.py and MCP_PUBLIC_WRITES in config.py.
+    include_writes = bool(settings.mcp_bearer_token) or settings.mcp_public_writes
+    mcp_server = build_mcp_server(app, include_writes=include_writes)
     app.state.mcp_server = mcp_server
     # host="0.0.0.0" opts out of the loopback-only default; the real host check
     # is the explicit transport_security built from PUBLIC_HOSTS.

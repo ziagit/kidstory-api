@@ -145,6 +145,11 @@ routers stay the single implementation.
   `update_story` and `delete_story` tools are registered too. Writes use the server's own
   `KIDSTORY_API_KEY`, which is why they only exist behind the token.
 
+- **`MCP_PUBLIC_WRITES=1`:** registers the write and generate tools on the open endpoint
+  with no auth at all. This is what lets ChatGPT's connector (which only supports "no
+  auth" or OAuth) publish stories — and it also means **anyone who knows the URL can
+  create, edit or delete stories** and spend the model budget. Off by default.
+
 Set `PUBLIC_HOSTS` to the hostname(s) the API is served under to turn on the MCP
 transport's DNS-rebinding protection.
 

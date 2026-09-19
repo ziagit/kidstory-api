@@ -7,9 +7,11 @@ transport rather than the network, so they work regardless of which port or
 host the server happens to be bound to.
 
 The catalog-reading tools are always registered. The write and generate tools
-spend the server's own KIDSTORY_API_KEY and its model compute, so they exist
-only when /mcp itself is protected by MCP_BEARER_TOKEN (see main.py) — an open
-/mcp is browse-only by construction.
+spend the server's own KIDSTORY_API_KEY and its model compute, so by default
+they exist only when /mcp itself is protected by MCP_BEARER_TOKEN (see
+main.py). MCP_PUBLIC_WRITES=1 registers them on the open endpoint anyway — the
+owner's explicit choice so ChatGPT's connector, which can't send a token, can
+publish stories.
 """
 
 from typing import Any

@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     # so a public /mcp can never spend the server's own KIDSTORY_API_KEY.
     mcp_bearer_token: str = ""
 
+    # Register the write and generate tools on an *unauthenticated* /mcp. This
+    # exists because ChatGPT's connector UI can't send a bearer token: with it on,
+    # anyone who knows the URL can create, edit and delete stories and spend the
+    # model budget. Off by default; the owner opted in knowingly.
+    mcp_public_writes: bool = False
+
     # Comma-separated hostnames this server is publicly reached through (e.g.
     # "kidstory-api.vercel.app"). Enables the MCP transport's DNS-rebinding
     # protection for those hosts; blank turns the check off.
