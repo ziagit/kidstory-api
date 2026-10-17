@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.main import create_app
+
+from .test_agents import GOOD_STORY, claude, final, message, tool_use  # noqa: F401 (claude is a fixture)
 
 MCP_TOKEN = "mcp-secret"
 
@@ -105,3 +109,31 @@ def test_public_writes_opt_in_registers_write_tools_without_a_token(client, monk
         assert "create_story" in _tool_names(api.app) and "delete_story" in _tool_names(api.app)
         # No gate: an anonymous initialize goes straight through.
         assert api.post("/mcp", json=INITIALIZE, headers=MCP_HEADERS).status_code == 200
+
+
+def test_generate_story_runs_the_story_agent(mcp_env, claude):
+    claude["replies"] += [
+        message(
+            tool_use(
+                "submit_story",
+                {
+                    "title": "The Kite That Waited",
+                    "emoji": "🪁",
+                    "excerpt": "A kite waits patiently for the wind.",
+                    "category": "adventure",
+                    "age_range": "6-8",
+                    "tags": ["kite"],
+                    "paragraphs": GOOD_STORY,
+                },
+                "t1",
+            )
+        ),
+        final("Wrote the kite story that was asked for."),
+    ]
+    with mcp_env(MCP_TOKEN) as api:
+        server = api.app.state.mcp_server
+        result = api.portal.call(server.call_tool, "generate_story", {"topic": "a patient kite"})
+    payload = json.loads(result.content[0].text)
+    assert payload["draft"]["title"] == "The Kite That Waited"
+    assert payload["notes"] == "Wrote the kite story that was asked for."
+    assert "Premise to build on: a patient kite" in claude["requests"][0]["messages"][0]["content"]

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # Comma-separated origins allowed to call this API from a browser.
     cors_origins: str = "http://localhost:3000"
 
-    # Claude, through the Anthropic API. Blank disables /stories/generate.
+    # Claude, through the Anthropic API. Blank disables the agents (/agents/*).
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-5-5"
 

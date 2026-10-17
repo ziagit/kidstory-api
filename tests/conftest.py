@@ -61,6 +61,9 @@ def client(store, monkeypatch) -> TestClient:
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-key")
     monkeypatch.setenv("KIDSTORY_API_KEY", API_KEY)
     monkeypatch.setenv("CORS_ORIGINS", "http://localhost:3000")
+    # A local .env may hold real social accounts; tests that want them say so.
+    for name in ("FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "INSTAGRAM_ACCOUNT_ID", "INSTAGRAM_ACCESS_TOKEN"):
+        monkeypatch.setenv(name, "")
     get_settings.cache_clear()
 
     fake = FakeClient(store, {ENTITLED_TOKEN: ENTITLED_USER, FREE_TOKEN: FREE_USER})

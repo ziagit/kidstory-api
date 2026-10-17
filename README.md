@@ -17,8 +17,9 @@ same Supabase Postgres database the Nuxt app uses, so anything published through
 This is a **sibling project**, not part of the Nuxt app — the site keeps serving its own
 Nitro routes (`server/api/*`). This API exists to expose the catalog as a standalone
 service (story CRUD for other clients, tools, or apps), and it is where new stories are
-drafted: `POST /stories/generate` writes them with Claude (`claude-opus-5-5`) through the
-Anthropic API.
+written: every story, whether from the site's `/studio` chat, the daily auto-post or an MCP
+client, comes from the story agent (`POST /agents/story`), which runs on Claude
+(`claude-opus-5-5`) through the Anthropic API.
 
 ## Endpoints
 
@@ -29,8 +30,7 @@ Anthropic API.
 | `GET` | `/stories` | — | Newest-first listing (no body text) |
 | `GET` | `/stories/{slug}` | optional reader token | One story, paywall-aware |
 | `POST` | `/stories` | `X-API-Key` | Create a story |
-| `POST` | `/stories/generate` | `X-API-Key` | Draft a story with Claude (nothing saved) |
-| `POST` | `/agents/story` | `X-API-Key` | Run the story agent: pick, write and check a story (nothing saved) |
+| `POST` | `/agents/story` | `X-API-Key` | Run the story agent: write or revise a story and check it (nothing saved) |
 | `POST` | `/agents/social` | `X-API-Key` | Run the social agent: write and publish posts for a published story |
 | `PATCH` | `/stories/{slug}` | `X-API-Key` | Partial update |
 | `DELETE` | `/stories/{slug}` | `X-API-Key` | Delete a story |
@@ -100,44 +100,18 @@ Creating a story here writes to the database only. It does **not** trigger the o
 email or the Facebook / Instagram / YouTube auto-posts — those live in the Nuxt app's
 publish pipeline and still run from `/studio` and the daily cron.
 
-### Generating a story
-
-`POST /stories/generate` drafts a story with Claude and returns it in
-exactly the shape `POST /stories` accepts, so publishing is a second call with the same
-body. Nothing is saved by the generate call itself. It needs the API key because every
-call costs real model compute.
-
-```bash
-curl -X POST http://localhost:8000/stories/generate \
-  -H "X-API-Key: $KIDSTORY_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "topic": "a cat and a mouse who become friends", "category": "animals", "ageRange": "3-5" }'
-```
-
-Response: `{ "draft": { title, emoji, excerpt, category, ageRange, readTimeMinutes, tags, body },
-"history": [...] }`. Send `history` back with a follow-up `topic` ("make it shorter") to
-revise the same story — this is what the site's `/studio` chat does.
-
-Claude is asked for prose, not JSON: it writes story text and nothing else.
-`app/story_generator.py` derives the rest — the title from the topic (or a leading title
-line, if Claude wrote one), the excerpt from the opening sentence, emoji and tags from
-keywords in the text, read time from word count — and the request's
-`category`/`ageRange` pass straight through.
-
-The call goes through the official `anthropic` SDK at low effort (a short story doesn't
-need deep reasoning), using `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` (default
-`claude-opus-5-5`). It opts into Anthropic's server-side refusal fallback
-(`fallbacks: "default"`), so a benign request that a safety classifier wrongly declines is
-retried on another model. If Claude still declines, the endpoint answers 422.
-
 ### Agents
 
 Two Claude agents run here, both on the SDK's tool runner (`app/agents/`). Each one decides
 its own steps: it calls tools, reads what they return, and keeps going until it's done.
-They use the same `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` as `/stories/generate`, at low
-effort, with the same refusal fallback.
+They use `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` (default `claude-opus-5-5`) through the
+official `anthropic` SDK, at low effort (short stories don't need deep reasoning). They opt
+into Anthropic's server-side refusal fallback (`fallbacks: "default"`), so a benign request
+that a safety classifier wrongly declines is retried on another model; if Claude still
+declines, the endpoint answers 422.
 
-**Story agent: `POST /agents/story`.** This is what the daily auto-post runs. Tools:
+**Story agent: `POST /agents/story`.** Every story is written here: the site's `/studio`
+chat, the daily auto-post and the MCP `generate_story` tool all call it. Tools:
 
 - `catalog_overview`: story counts per category and age range, plus the newest titles.
 - `search_catalog`: existing stories matching a word or phrase, to avoid near-copies.
@@ -147,9 +121,13 @@ effort, with the same refusal fallback.
   instead of failing the run.
 
 Every field in the body is optional. With no `topic` the agent chooses its own premise,
-and with no `category`/`ageRange` it picks whatever the catalog has fewest of. The
-`/studio` chat stays on `/stories/generate`, because a person is steering there and one
-fast call fits better.
+and with no `category`/`ageRange` it picks whatever the catalog has fewest of; given, they
+are fixed and `submit_story` holds the agent to them.
+
+To revise a story, send the current `draft` with the change in `topic` ("make it
+shorter") and the `history` from the previous response. The agent edits that draft
+instead of starting over, and the response's `history` includes the new turn. This is how
+the `/studio` chat refines a story.
 
 ```bash
 curl -X POST http://localhost:8000/agents/story \
@@ -157,8 +135,10 @@ curl -X POST http://localhost:8000/agents/story \
   -d '{ "topic": "an owl who cannot fall asleep" }'
 ```
 
-Response: `{ "draft": {...same shape as /stories/generate...}, "notes": "why it chose this
-story", "steps": [{ "tool", "detail" }, ...] }`. Publish the draft with `POST /stories`.
+Response: `{ "draft": { title, emoji, excerpt, category, ageRange, readTimeMinutes, tags,
+body }, "notes": "why it chose this story (or what it changed)", "steps": [{ "tool",
+"detail" }, ...], "history": [...] }`. Nothing is saved: the draft is exactly what
+`POST /stories` accepts, so publishing is a second call with the same body.
 
 **Social agent: `POST /agents/social`.** It runs for a story that's already published
 (`{ "slug": "...", "dryRun": false }`). It reads the story, checks the last few posts on
@@ -184,8 +164,8 @@ routers stay the single implementation.
 - **`MCP_BEARER_TOKEN` unset:** `/mcp` is open but **read-only** — only `list_categories`,
   `list_stories` and `get_story` are registered.
 - **`MCP_BEARER_TOKEN` set:** every request to `/mcp` must carry
-  `Authorization: Bearer <token>`, and the `generate_story`, `create_story`,
-  `update_story` and `delete_story` tools are registered too. Writes use the server's own
+  `Authorization: Bearer <token>`, and the `generate_story` (runs the story agent),
+  `create_story`, `update_story` and `delete_story` tools are registered too. Writes use the server's own
   `KIDSTORY_API_KEY`, which is why they only exist behind the token.
 
 - **`MCP_PUBLIC_WRITES=1`:** registers the write and generate tools on the open endpoint
@@ -264,8 +244,7 @@ app/
   supabase_client.py  Anon (read) and service-role (write) clients
   security.py         X-API-Key guard, Supabase JWT, entitlement check
   schemas.py          Pydantic models; camelCase responses matching the Nuxt app
-  story_generator.py  Calls Claude (anthropic SDK) and derives draft metadata
-  agents/             The story and social agents (tool runner + their tools)
+  agents/             The story and social agents: Claude client + tool runner (base.py) and their tools
   social.py           Facebook / Instagram Graph API calls used by the social agent
   mcp_server.py       MCP tools wrapping the REST endpoints in-process
   cover_image.py      Port of the site's Pollinations cover-URL formula

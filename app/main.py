@@ -13,9 +13,9 @@ from .routers import agents, categories, health, stories
 
 API_DESCRIPTION = (
     "REST API for the Kidstory story catalog. Reads are public; creating, "
-    "updating and deleting stories requires the `X-API-Key` header, as does "
-    "`POST /stories/generate`, which drafts a story with Claude, and the "
-    "`/agents/*` endpoints, which run the story and social-media agents. "
+    "updating and deleting stories requires the `X-API-Key` header, as do the "
+    "`/agents/*` endpoints, which run the story and social-media agents: every "
+    "story is written by the story agent. "
     "Premium stories are redacted server-side unless the caller sends a Supabase "
     "access token belonging to a reader who has purchased full access."
 )

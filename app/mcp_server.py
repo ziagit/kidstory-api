@@ -28,8 +28,8 @@ READ_ONLY_INSTRUCTIONS = (
 )
 FULL_INSTRUCTIONS = (
     "Tools for browsing and managing the Kidstory children's story catalog. "
-    "Reads are always available. `generate_story` drafts a story with Claude "
-    "without saving it. Writes (create/update/delete) modify the live "
+    "Reads are always available. `generate_story` runs Kidstory's story agent, "
+    "which checks the catalog and drafts a story without saving it. Writes (create/update/delete) modify the live "
     "production catalog immediately — confirm with the user before calling them."
 )
 
@@ -103,14 +103,18 @@ def build_mcp_server(app: ASGIApp, *, include_writes: bool) -> MCPServer:
 
     @server.tool()
     async def generate_story(
-        topic: str,
+        topic: str | None = None,
         category: str | None = None,
         age_range: str | None = None,
     ) -> Any:
-        """Draft a new story about `topic` with Claude. Returns the draft without saving it; pass it to create_story to publish."""
+        """Run the story agent: it checks the catalog, writes a story about `topic` and revises it until it passes the catalog's rules.
+
+        Leave out topic, category or age_range to let the agent choose from what the catalog is missing.
+        Returns the draft (not saved; pass it to create_story to publish), the agent's notes and its steps.
+        """
         payload = {"topic": topic, "category": category, "ageRange": age_range}
         payload = {key: value for key, value in payload.items() if value is not None}
-        return await _request("POST", "/stories/generate", json=payload, headers=_write_headers())
+        return await _request("POST", "/agents/story", json=payload, headers=_write_headers())
 
     @server.tool()
     async def create_story(

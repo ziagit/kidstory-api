@@ -11,14 +11,11 @@ from ..schemas import (
     CATEGORY_SLUGS,
     Story,
     StoryCreate,
-    StoryGenerateRequest,
-    StoryGenerateResponse,
     StoryList,
     StorySummary,
     StoryUpdate,
 )
 from ..security import full_access_dependency, require_api_key
-from ..story_generator import StoryGenerationError, generate_story_draft
 from ..supabase_client import admin_client, public_client
 
 router = APIRouter(prefix="/stories", tags=["stories"])
@@ -154,26 +151,6 @@ async def create_story(payload: StoryCreate) -> Story:
         return Story.model_validate((response.data or [candidate])[0])
 
     raise HTTPException(status_code=500, detail="Could not generate a unique slug.")
-
-
-@router.post("/generate", response_model=StoryGenerateResponse, dependencies=[Depends(require_api_key)])
-async def generate_story(payload: StoryGenerateRequest) -> StoryGenerateResponse:
-    """Drafts a story with Claude. Nothing is saved.
-
-    The draft comes back in the shape POST /stories accepts, so publishing it
-    is a second call with the same body. Behind the API key because every call
-    costs real model compute, not because the output is sensitive.
-    """
-    try:
-        draft, history = await generate_story_draft(
-            payload.topic,
-            category=payload.category,
-            age_range=payload.age_range,
-            history=payload.history,
-        )
-    except StoryGenerationError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    return StoryGenerateResponse(draft=draft, history=history)
 
 
 @router.patch("/{slug}", response_model=Story, dependencies=[Depends(require_api_key)])

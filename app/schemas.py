@@ -143,7 +143,7 @@ class ChatMessage(CamelModel):
 
 
 class StoryDraft(CamelModel):
-    """What /stories/generate returns — the same shape /studio's editor works with.
+    """What the story agent returns — the same shape /studio's editor works with.
 
     Everything here is accepted as-is by POST /stories (StoryCreate), so a client
     can publish a draft without reshaping it.
@@ -159,28 +159,20 @@ class StoryDraft(CamelModel):
     body: list[str]
 
 
-class StoryGenerateRequest(CamelModel):
-    topic: Annotated[str, Field(min_length=1, max_length=1000)]
-    category: CategorySlug | None = None
-    age_range: AgeRange | None = None
-    # Prior turns of a /studio conversation, so "make it shorter" style follow-ups
-    # reach the model with the story it wrote before. Trimmed server-side.
-    history: list[ChatMessage] = []
-
-
-class StoryGenerateResponse(CamelModel):
-    draft: StoryDraft
-    # The conversation including this turn, for the client to send back next time.
-    history: list[ChatMessage]
-
-
 class StoryAgentRequest(CamelModel):
-    # A premise to build on (e.g. from the Nuxt app's topic pool). Left out, the
-    # agent picks its own premise from what the catalog is missing.
+    # A premise to build on (a /studio topic, or the Nuxt app's topic pool). Left
+    # out, the agent picks its own premise from what the catalog is missing.
+    # With `draft`, this is the change asked for instead ("make it shorter").
     topic: Annotated[str, Field(max_length=1000)] | None = None
-    # Fixed when given; otherwise the agent chooses from the catalog's gaps.
+    # Fixed when given; otherwise the agent chooses from the catalog's gaps (or,
+    # for a revision, keeps the draft's unless the request changes them).
     category: CategorySlug | None = None
     age_range: AgeRange | None = None
+    # The story to revise. Left out, the agent writes a new one.
+    draft: StoryDraft | None = None
+    # Earlier turns of a /studio conversation, as returned by the last call.
+    # Trimmed server-side.
+    history: list[ChatMessage] = []
 
 
 class AgentStep(CamelModel):
@@ -191,11 +183,13 @@ class AgentStep(CamelModel):
 
 
 class StoryAgentResponse(CamelModel):
-    # Accepted by POST /stories as-is, like /stories/generate's draft.
+    # Accepted by POST /stories as-is.
     draft: StoryDraft
-    # The agent's own one-line account of why it wrote this story.
+    # The agent's own one-line account of why it wrote this story, or what it changed.
     notes: str
     steps: list[AgentStep]
+    # The conversation including this turn, for the client to send back next time.
+    history: list[ChatMessage]
 
 
 SocialPlatform = Literal["facebook", "instagram"]

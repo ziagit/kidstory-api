@@ -15,15 +15,20 @@ async def story_agent(payload: StoryAgentRequest) -> StoryAgentResponse:
 
     The agent reads the catalog, chooses a category, age range and premise
     (unless they're given), writes the story and revises it until it passes the
-    catalog's checks.
+    catalog's checks. Send `draft` with a change request in `topic`, plus the
+    `history` from the last response, to revise a story instead (the /studio chat).
     """
     try:
-        draft, notes, steps = await run_story_agent(
-            topic=payload.topic, category=payload.category, age_range=payload.age_range
+        draft, notes, steps, history = await run_story_agent(
+            topic=payload.topic,
+            category=payload.category,
+            age_range=payload.age_range,
+            draft=payload.draft,
+            history=payload.history,
         )
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    return StoryAgentResponse(draft=draft, notes=notes, steps=steps)
+    return StoryAgentResponse(draft=draft, notes=notes, steps=steps, history=history)
 
 
 @router.post("/social", response_model=SocialAgentResponse)

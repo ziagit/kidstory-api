@@ -190,6 +190,72 @@ def test_story_agent_holds_fixed_choices_and_unique_titles(client, claude):
     assert "age range is fixed to '9-12'" in problems
 
 
+def test_story_agent_revises_a_draft_with_the_chat_history(client, claude):
+    draft = {
+        "title": "Olive and the Quiet Forest",
+        "emoji": "🦉",
+        "excerpt": "Olive the owl can't sleep in the silent forest.",
+        "category": "bedtime",
+        "ageRange": "3-5",
+        "readTimeMinutes": 2,
+        "tags": ["owl"],
+        "body": GOOD_STORY,
+    }
+    history = [
+        {"role": "assistant", "content": "A stray leading reply, trimmed."},
+        {"role": "user", "content": "an owl who cannot sleep"},
+        {"role": "assistant", "content": "The catalog had few bedtime stories."},
+    ]
+    revised = [*GOOD_STORY[:2], GOOD_STORY[2] + " Her friend the hedgehog yawned and waved goodnight."]
+    claude["replies"] += [
+        message(
+            tool_use(
+                "submit_story",
+                {
+                    "title": "Olive and the Humming Forest",
+                    "emoji": "🦉",
+                    "excerpt": "Olive the owl hums the whole forest to sleep.",
+                    # No category or age range was fixed, so the agent may change them.
+                    "category": "friendship",
+                    "age_range": "3-5",
+                    "tags": ["owl", "hedgehog"],
+                    "paragraphs": revised,
+                },
+                "t1",
+            )
+        ),
+        final("Added the hedgehog to the ending and retitled it."),
+    ]
+
+    response = client.post(
+        "/agents/story",
+        json={"topic": "add a hedgehog friend", "draft": draft, "history": history},
+        headers=HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["draft"]["title"] == "Olive and the Humming Forest"
+    assert body["draft"]["category"] == "friendship"
+    assert body["draft"]["body"] == revised
+    assert body["notes"] == "Added the hedgehog to the ending and retitled it."
+    # The returned history is the trimmed prior turns plus this one, request first.
+    assert body["history"] == [
+        *history,
+        {"role": "user", "content": "add a hedgehog friend"},
+        {"role": "assistant", "content": "Added the hedgehog to the ending and retitled it."},
+    ]
+
+    # Claude got the earlier turns (opening on a user turn) and then the draft to revise.
+    sent = claude["requests"][0]["messages"]
+    assert [m["role"] for m in sent] == ["user", "assistant", "user"]
+    assert sent[0]["content"] == "an owl who cannot sleep"
+    prompt = sent[-1]["content"]
+    assert prompt.startswith("Revise this draft.")
+    assert "Change requested: add a hedgehog friend" in prompt
+    assert "Olive and the Quiet Forest" in prompt and GOOD_STORY[0] in prompt
+    assert "(fixed)" not in prompt
+
+
 def test_story_agent_surfaces_a_refusal(client, claude):
     claude["replies"] += [message({"type": "text", "text": ""}, stop_reason="refusal")]
     response = client.post("/agents/story", json={}, headers=HEADERS)

@@ -6,16 +6,41 @@ iteration cap is hit). Each agent supplies its own prompt and tools.
 """
 
 from collections.abc import Sequence
+from functools import lru_cache
 from typing import Any
 
 import anthropic
 
 from ..config import get_settings
-from ..story_generator import FALLBACK_BETA, MAX_TOKENS, StoryGenerationError, _client
+from ..schemas import ChatMessage
+
+# The reply budget covers Claude's thinking as well as its text and tool calls.
+# A short story at low effort uses a small part of it.
+MAX_TOKENS = 16000
+# Per Claude call. The API's Vercel function stops at 120s (vercel.json), and a
+# run makes a handful of calls, most of them short tool turns.
+TIMEOUT_SECONDS = 50.0
+MAX_RETRIES = 1
+# Opts into Anthropic's server-side fallback: if a safety classifier declines
+# a (benign) request, the API retries it on the model it recommends instead.
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
-class AgentError(StoryGenerationError):
+class AgentError(Exception):
     """A failure the HTTP layer turns into a response; `status_code` says which."""
+
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+@lru_cache
+def _client() -> anthropic.AsyncAnthropic:
+    return anthropic.AsyncAnthropic(
+        api_key=get_settings().anthropic_api_key,
+        timeout=TIMEOUT_SECONDS,
+        max_retries=MAX_RETRIES,
+    )
 
 
 async def run_agent(
@@ -24,18 +49,28 @@ async def run_agent(
     prompt: str,
     tools: Sequence[Any],
     max_iterations: int,
+    history: Sequence[ChatMessage] = (),
     effort: str = "low",
 ) -> str:
-    """Runs the agent to completion and returns its final text reply."""
+    """Runs the agent to completion and returns its final text reply.
+
+    `history` is earlier turns of a conversation (plain text), sent ahead of
+    `prompt` so a follow-up reaches Claude with what came before it.
+    """
     settings = get_settings()
     if not settings.anthropic_api_key:
         raise AgentError(503, "Agents are not configured on this server (ANTHROPIC_API_KEY is unset).")
+
+    turns = [{"role": m.role, "content": m.content} for m in history if m.content.strip()]
+    # The conversation must open on a user turn; trimmed history may not.
+    while turns and turns[0]["role"] != "user":
+        turns = turns[1:]
 
     runner = _client().beta.messages.tool_runner(
         model=settings.anthropic_model,
         max_tokens=MAX_TOKENS,
         system=system,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[*turns, {"role": "user", "content": prompt}],
         tools=list(tools),
         max_iterations=max_iterations,
         output_config={"effort": effort},
