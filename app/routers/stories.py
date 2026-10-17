@@ -158,7 +158,7 @@ async def create_story(payload: StoryCreate) -> Story:
 
 @router.post("/generate", response_model=StoryGenerateResponse, dependencies=[Depends(require_api_key)])
 async def generate_story(payload: StoryGenerateRequest) -> StoryGenerateResponse:
-    """Drafts a story with the Kidstory fine-tune. Nothing is saved.
+    """Drafts a story with Claude. Nothing is saved.
 
     The draft comes back in the shape POST /stories accepts, so publishing it
     is a second call with the same body. Behind the API key because every call

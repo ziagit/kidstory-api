@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv/bin/uvicorn",
       "runtimeArgs": ["app.main:app", "--reload", "--port", "8000"],
       "port": 8000
+    },
+    {
+      "name": "kidstory-nuxt",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "../kidstory", "run", "dev"],
+      "port": 3000
     }
   ]
 }

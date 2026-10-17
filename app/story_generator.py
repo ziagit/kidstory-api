@@ -1,11 +1,6 @@
-"""Story drafting with the Kidstory fine-tune (ziaflutter/tinyllama-cat-mouse-story).
+"""Story drafting with Claude, through the Anthropic SDK.
 
-The model runs behind an OpenAI-compatible server — the llama.cpp Space in
-deploy/model-space/ — and is called through huggingface_hub's InferenceClient,
-which speaks that protocol when given a `base_url`.
-
-It is a 1.1B prose model, not a JSON one: it returns story text and nothing
-else. Everything else the catalog needs (title, excerpt, emoji, tags, read
+Claude is asked for prose, not JSON: it returns story text and nothing else. Everything else the catalog needs (title, excerpt, emoji, tags, read
 time) is derived here from that text, so the response has the exact shape the
 /studio editor and POST /stories already work with.
 """
@@ -13,13 +8,11 @@ time) is derived here from that text, so the response has the exact shape the
 import re
 from functools import lru_cache
 
-from huggingface_hub import AsyncInferenceClient
+import anthropic
 
 from .config import get_settings
 from .schemas import ChatMessage, StoryDraft
 
-# The base chat model was tuned with a system turn, so a short one is safe; the
-# actual steering happens in the user message, which matches the SFT format.
 SYSTEM_PROMPT = (
     "You are a storyteller for young children. Write short, warm, gentle stories "
     "of two or three short paragraphs, with a kind main character and a happy "
@@ -27,10 +20,20 @@ SYSTEM_PROMPT = (
 )
 
 # The studio keeps the last few turns so "make it shorter" style follow-ups
-# reach the model with the story it wrote before. Keep that bounded: this model
-# has a 2048-token context and a story is ~400 tokens.
-MAX_HISTORY_TURNS = 4
-TEMPERATURE = 0.8
+# reach the model with the story it wrote before. Matches the 12 messages the
+# Nuxt app sends; a story is ~400 tokens, so this stays small.
+MAX_HISTORY_TURNS = 12
+
+# The reply budget covers Claude's thinking as well as the story. A short story
+# at low effort uses a small part of it.
+MAX_TOKENS = 16000
+# Vercel stops the function at 120s (vercel.json), so one retry of a 50s call
+# still answers in time.
+TIMEOUT_SECONDS = 50.0
+MAX_RETRIES = 1
+# Opts into Anthropic's server-side fallback: if a safety classifier declines
+# a (benign) request, the API retries it on the model it recommends instead.
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 # Words per minute a young reader (or a parent reading aloud) gets through.
 WORDS_PER_MINUTE = 120
@@ -100,37 +103,47 @@ class StoryGenerationError(Exception):
 
 
 @lru_cache
-def _client() -> AsyncInferenceClient:
-    settings = get_settings()
-    return AsyncInferenceClient(
-        base_url=settings.story_model_url,
-        api_key=settings.story_model_api_key or None,
-        timeout=settings.story_model_timeout,
+def _client() -> anthropic.AsyncAnthropic:
+    return anthropic.AsyncAnthropic(
+        api_key=get_settings().anthropic_api_key,
+        timeout=TIMEOUT_SECONDS,
+        max_retries=MAX_RETRIES,
     )
 
 
 async def _complete(messages: list[dict[str, str]]) -> str:
-    """One chat completion against the model server; returns the raw text."""
+    """One Claude completion; returns the raw text. `messages` leads with the system turn."""
     settings = get_settings()
-    if not settings.story_model_url:
-        raise StoryGenerationError(503, "Story generation is not configured on this server (STORY_MODEL_URL is unset).")
+    if not settings.anthropic_api_key:
+        raise StoryGenerationError(503, "Story generation is not configured on this server (ANTHROPIC_API_KEY is unset).")
+    system, turns = messages[0]["content"], messages[1:]
+    # The conversation must open on a user turn; trimmed history may not.
+    while turns and turns[0]["role"] != "user":
+        turns = turns[1:]
     try:
-        completion = await _client().chat_completion(
-            messages,
-            model=settings.story_model_name,
-            max_tokens=settings.story_model_max_tokens,
-            temperature=TEMPERATURE,
-            top_p=0.9,
-            # The fine-tune occasionally runs on into the next turn marker
-            # instead of emitting EOS; cut it there rather than shipping garbage.
-            stop=["<|user|>", "<|system|>", "<|assistant|>"],
+        response = await _client().beta.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=MAX_TOKENS,
+            system=system,
+            messages=turns,
+            # A short children's story doesn't need deep reasoning; low effort
+            # keeps it quick and cheap.
+            output_config={"effort": "low"},
+            betas=[FALLBACK_BETA],
+            fallbacks="default",
         )
-    except Exception as exc:  # noqa: BLE001 - any transport/HTTP failure is a 502 to our caller
-        raise StoryGenerationError(502, f"The story model could not be reached: {exc}") from exc
-    if not completion.choices:
-        return ""
-    content = (completion.choices[0].message.content or "").strip()
-    if completion.choices[0].finish_reason == "length":
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as exc:
+        raise StoryGenerationError(503, f"Claude rejected this server's ANTHROPIC_API_KEY: {exc.message}") from exc
+    except anthropic.RateLimitError as exc:
+        raise StoryGenerationError(429, "Claude is rate-limiting this server. Please try again in a minute.") from exc
+    except anthropic.APIStatusError as exc:
+        raise StoryGenerationError(502, f"Claude returned an error ({exc.status_code}): {exc.message}") from exc
+    except anthropic.APIConnectionError as exc:
+        raise StoryGenerationError(502, f"Claude could not be reached: {exc}") from exc
+    if response.stop_reason == "refusal":
+        raise StoryGenerationError(422, "Claude declined to write this story. Please try a different topic.")
+    content = "".join(block.text for block in response.content if block.type == "text").strip()
+    if response.stop_reason == "max_tokens":
         content = _trim_to_last_sentence(content)
     return content
 
@@ -142,7 +155,7 @@ def _trim_to_last_sentence(text: str) -> str:
 
 
 def _build_user_message(topic: str, category: str | None, age_range: str | None) -> str:
-    """The user turn, in the "Write a short story about ..." form the SFT data used.
+    """The user turn, in the "Write a short story about ..." form.
 
     A topic that is already an instruction ("make it shorter", "write a story
     where...") is passed through as-is rather than wrapped a second time.
@@ -271,15 +284,16 @@ async def generate_story_draft(
         {"role": "user", "content": user_message},
     ]
 
-    # A small model occasionally emits nothing but a stop token; one retry
-    # absorbs that without surfacing an error for a transient blip.
+    # An empty or unusable reply gets one more try rather than surfacing an
+    # error for a transient blip. Only a 502 is worth retrying: a refusal, a
+    # rate limit or a missing key won't change.
     last_error: StoryGenerationError | None = None
     for _ in range(2):
         try:
             text = await _complete(messages)
             draft = draft_from_text(text, topic=title_topic, category=category, age_range=age_range)
         except StoryGenerationError as exc:
-            if exc.status_code == 503:
+            if exc.status_code != 502:
                 raise
             last_error = exc
             continue

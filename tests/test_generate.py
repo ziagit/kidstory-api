@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app import story_generator
@@ -105,11 +107,77 @@ def test_generate_gives_up_after_two_empty_replies(client, fake_model):
 
 
 def test_generate_is_503_when_no_model_is_configured(client, monkeypatch):
-    monkeypatch.setenv("STORY_MODEL_URL", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     story_generator.get_settings.cache_clear()
     response = client.post("/stories/generate", json={"topic": "a mouse"}, headers={"X-API-Key": API_KEY})
     assert response.status_code == 503
-    assert "STORY_MODEL_URL" in response.json()["detail"]
+    assert "ANTHROPIC_API_KEY" in response.json()["detail"]
+
+
+class _FakeClaude:
+    """Stands in for AsyncAnthropic; records each request and replays canned responses."""
+
+    def __init__(self, *responses):
+        self.requests: list[dict] = []
+        self._responses = list(responses)
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+
+    async def _create(self, **kwargs):
+        self.requests.append(kwargs)
+        return self._responses.pop(0)
+
+
+def _claude_reply(text: str, stop_reason: str = "end_turn"):
+    return SimpleNamespace(
+        stop_reason=stop_reason,
+        content=[SimpleNamespace(type="thinking", thinking=""), SimpleNamespace(type="text", text=text)],
+    )
+
+
+@pytest.fixture
+def fake_claude(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    story_generator.get_settings.cache_clear()
+
+    def install(*responses):
+        fake = _FakeClaude(*responses)
+        monkeypatch.setattr(story_generator, "_client", lambda: fake)
+        return fake
+
+    yield install
+    story_generator.get_settings.cache_clear()
+
+
+def test_claude_request_uses_the_system_prompt_and_reads_only_text_blocks(client, fake_claude):
+    fake = fake_claude(_claude_reply(STORY))
+    history = [
+        {"role": "assistant", "content": "An orphaned reply from a trimmed history."},
+        {"role": "user", "content": "Write a story about a fox"},
+        {"role": "assistant", "content": "Once upon a time there was a fox."},
+    ]
+    response = client.post(
+        "/stories/generate",
+        json={"topic": "make it about a mouse instead", "history": history},
+        headers={"X-API-Key": API_KEY},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["draft"]["body"][0].startswith("Once upon a time, a small grey mouse")
+
+    (request,) = fake.requests
+    assert request["model"] == "claude-opus-5-5"
+    assert request["system"] == story_generator.SYSTEM_PROMPT
+    assert request["fallbacks"] == "default"
+    # The conversation opens on a user turn even when the history didn't.
+    assert [m["role"] for m in request["messages"]] == ["user", "assistant", "user"]
+    assert "temperature" not in request and "top_p" not in request
+
+
+def test_a_claude_refusal_is_a_422_and_is_not_retried(client, fake_claude):
+    fake = fake_claude(_claude_reply("", stop_reason="refusal"))
+    response = client.post("/stories/generate", json={"topic": "a mouse"}, headers={"X-API-Key": API_KEY})
+    assert response.status_code == 422
+    assert "declined" in response.json()["detail"]
+    assert len(fake.requests) == 1
 
 
 def test_a_leading_title_line_is_lifted_out_of_the_body():

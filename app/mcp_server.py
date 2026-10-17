@@ -28,8 +28,8 @@ READ_ONLY_INSTRUCTIONS = (
 )
 FULL_INSTRUCTIONS = (
     "Tools for browsing and managing the Kidstory children's story catalog. "
-    "Reads are always available. `generate_story` drafts a story with Kidstory's "
-    "own model without saving it. Writes (create/update/delete) modify the live "
+    "Reads are always available. `generate_story` drafts a story with Claude "
+    "without saving it. Writes (create/update/delete) modify the live "
     "production catalog immediately — confirm with the user before calling them."
 )
 
@@ -107,7 +107,7 @@ def build_mcp_server(app: ASGIApp, *, include_writes: bool) -> MCPServer:
         category: str | None = None,
         age_range: str | None = None,
     ) -> Any:
-        """Draft a new story about `topic` with Kidstory's own story model. Returns the draft without saving it; pass it to create_story to publish."""
+        """Draft a new story about `topic` with Claude. Returns the draft without saving it; pass it to create_story to publish."""
         payload = {"topic": topic, "category": category, "ageRange": age_range}
         payload = {key: value for key, value in payload.items() if value is not None}
         return await _request("POST", "/stories/generate", json=payload, headers=_write_headers())

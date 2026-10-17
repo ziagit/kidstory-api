@@ -25,17 +25,9 @@ class Settings(BaseSettings):
     # Comma-separated origins allowed to call this API from a browser.
     cors_origins: str = "http://localhost:3000"
 
-    # Story model server — an OpenAI-compatible endpoint (the llama.cpp Space in
-    # deploy/model-space/ serving ziaflutter/tinyllama-cat-mouse-story), called
-    # through huggingface_hub's InferenceClient. Blank disables /stories/generate.
-    story_model_url: str = ""
-    story_model_api_key: str = ""
-    story_model_name: str = "kidstory-story-model"
-    story_model_timeout: float = 120.0
-    # Reply budget. ~450 suits the 1.1B fine-tune's short stories; a large
-    # hosted model (e.g. OpenRouter, which is OpenAI-compatible and works here
-    # as a stand-in) writes longer and wants ~1200.
-    story_model_max_tokens: int = 450
+    # Claude, through the Anthropic API. Blank disables /stories/generate.
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-opus-5-5"
 
     # Bearer token required on /mcp. Blank leaves /mcp open but read-only — the
     # write and generate tools are only registered when a token protects them,
