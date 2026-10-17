@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app import security
 from app.config import get_settings
+from app.agents import social_agent, story_agent
 from app.routers import health, stories
 
 from .fakes import FakeClient
@@ -63,7 +64,7 @@ def client(store, monkeypatch) -> TestClient:
     get_settings.cache_clear()
 
     fake = FakeClient(store, {ENTITLED_TOKEN: ENTITLED_USER, FREE_TOKEN: FREE_USER})
-    for module in (stories, security, health):
+    for module in (stories, security, health, story_agent, social_agent):
         monkeypatch.setattr(module, "public_client", lambda: fake, raising=False)
         monkeypatch.setattr(module, "admin_client", lambda: fake, raising=False)
 

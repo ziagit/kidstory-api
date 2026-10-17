@@ -172,3 +172,54 @@ class StoryGenerateResponse(CamelModel):
     draft: StoryDraft
     # The conversation including this turn, for the client to send back next time.
     history: list[ChatMessage]
+
+
+class StoryAgentRequest(CamelModel):
+    # A premise to build on (e.g. from the Nuxt app's topic pool). Left out, the
+    # agent picks its own premise from what the catalog is missing.
+    topic: Annotated[str, Field(max_length=1000)] | None = None
+    # Fixed when given; otherwise the agent chooses from the catalog's gaps.
+    category: CategorySlug | None = None
+    age_range: AgeRange | None = None
+
+
+class AgentStep(CamelModel):
+    """One tool call the agent made, for logs and for seeing how it decided."""
+
+    tool: str
+    detail: str
+
+
+class StoryAgentResponse(CamelModel):
+    # Accepted by POST /stories as-is, like /stories/generate's draft.
+    draft: StoryDraft
+    # The agent's own one-line account of why it wrote this story.
+    notes: str
+    steps: list[AgentStep]
+
+
+SocialPlatform = Literal["facebook", "instagram"]
+
+
+class SocialAgentRequest(CamelModel):
+    slug: Annotated[str, Field(min_length=1, max_length=200)]
+    # Origin the story links point at. Defaults to SITE_URL.
+    site_url: str | None = None
+    # Write the posts but don't publish them — for checking the agent's output.
+    dry_run: bool = False
+
+
+class SocialPost(CamelModel):
+    platform: SocialPlatform
+    # posted: live on the platform. dry_run: written, not published.
+    # skipped: not configured, or the agent chose not to post. failed: the platform rejected it.
+    status: Literal["posted", "dry_run", "skipped", "failed"]
+    text: str | None = None
+    post_id: str | None = None
+    error: str | None = None
+
+
+class SocialAgentResponse(CamelModel):
+    posts: list[SocialPost]
+    notes: str
+    steps: list[AgentStep]

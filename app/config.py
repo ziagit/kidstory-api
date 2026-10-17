@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-5-5"
 
+    # The social agent's accounts (POST /agents/social). A platform whose
+    # credentials are blank is left out of the agent's tools entirely.
+    facebook_page_id: str = ""
+    facebook_page_access_token: str = ""
+    instagram_account_id: str = ""
+    instagram_access_token: str = ""
+
+    # Public origin of the Nuxt site, for the story links the social agent shares.
+    # Facebook fetches the link to build its preview card, so it must be reachable.
+    site_url: str = "https://storyland-sigma.vercel.app"
+
     # Bearer token required on /mcp. Blank leaves /mcp open but read-only — the
     # write and generate tools are only registered when a token protects them,
     # so a public /mcp can never spend the server's own KIDSTORY_API_KEY.

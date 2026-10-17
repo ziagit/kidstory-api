@@ -30,6 +30,8 @@ Anthropic API.
 | `GET` | `/stories/{slug}` | optional reader token | One story, paywall-aware |
 | `POST` | `/stories` | `X-API-Key` | Create a story |
 | `POST` | `/stories/generate` | `X-API-Key` | Draft a story with Claude (nothing saved) |
+| `POST` | `/agents/story` | `X-API-Key` | Run the story agent: pick, write and check a story (nothing saved) |
+| `POST` | `/agents/social` | `X-API-Key` | Run the social agent: write and publish posts for a published story |
 | `PATCH` | `/stories/{slug}` | `X-API-Key` | Partial update |
 | `DELETE` | `/stories/{slug}` | `X-API-Key` | Delete a story |
 | `POST` | `/mcp` | optional bearer | MCP endpoint (see below) |
@@ -128,6 +130,51 @@ need deep reasoning), using `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` (default
 (`fallbacks: "default"`), so a benign request that a safety classifier wrongly declines is
 retried on another model. If Claude still declines, the endpoint answers 422.
 
+### Agents
+
+Two Claude agents run here, both on the SDK's tool runner (`app/agents/`). Each one decides
+its own steps: it calls tools, reads what they return, and keeps going until it's done.
+They use the same `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` as `/stories/generate`, at low
+effort, with the same refusal fallback.
+
+**Story agent: `POST /agents/story`.** This is what the daily auto-post runs. Tools:
+
+- `catalog_overview`: story counts per category and age range, plus the newest titles.
+- `search_catalog`: existing stories matching a word or phrase, to avoid near-copies.
+- `submit_story`: the finished story. It's checked against the catalog's rules: 2–4
+  paragraphs of 150–450 words, a valid category and age range, a title that isn't taken,
+  1–4 tags, and a short excerpt. Problems go back to the agent to fix, so it revises
+  instead of failing the run.
+
+Every field in the body is optional. With no `topic` the agent chooses its own premise,
+and with no `category`/`ageRange` it picks whatever the catalog has fewest of. The
+`/studio` chat stays on `/stories/generate`, because a person is steering there and one
+fast call fits better.
+
+```bash
+curl -X POST http://localhost:8000/agents/story \
+  -H "X-API-Key: $KIDSTORY_API_KEY" -H "Content-Type: application/json" \
+  -d '{ "topic": "an owl who cannot fall asleep" }'
+```
+
+Response: `{ "draft": {...same shape as /stories/generate...}, "notes": "why it chose this
+story", "steps": [{ "tool", "detail" }, ...] }`. Publish the draft with `POST /stories`.
+
+**Social agent: `POST /agents/social`.** It runs for a story that's already published
+(`{ "slug": "...", "dryRun": false }`). It reads the story, checks the last few posts on
+each account (`recent_posts`), then writes and publishes a post for each platform
+(`post_to_facebook`, `post_to_instagram`). The link and the image are fixed by the server,
+so the agent controls only the words. The post tools enforce each platform's limits before
+anything is sent, and an Instagram caption without the story URL is sent back to the agent.
+Each platform gets at most one post per run and at most two attempts.
+
+A platform with blank credentials (`FACEBOOK_*`, `INSTAGRAM_*`) is left out, and with none
+configured no model call is made. `dryRun: true` writes the posts without publishing them.
+Response: `{ "posts": [{ platform, status: posted|dry_run|skipped|failed, text, postId,
+error }], "notes", "steps" }`. A rejected post shows up as `failed`; it doesn't fail the
+request. YouTube isn't part of the agent: its upload needs ffmpeg, so it stays in the
+Nuxt app.
+
 ### MCP
 
 The same catalog is exposed to MCP clients (ChatGPT / Claude connectors, Claude Code) at
@@ -218,8 +265,10 @@ app/
   security.py         X-API-Key guard, Supabase JWT, entitlement check
   schemas.py          Pydantic models; camelCase responses matching the Nuxt app
   story_generator.py  Calls Claude (anthropic SDK) and derives draft metadata
+  agents/             The story and social agents (tool runner + their tools)
+  social.py           Facebook / Instagram Graph API calls used by the social agent
   mcp_server.py       MCP tools wrapping the REST endpoints in-process
   cover_image.py      Port of the site's Pollinations cover-URL formula
-  routers/            health, categories, stories
+  routers/            health, categories, stories, agents
 tests/                pytest suite + in-memory Supabase fake + fake Claude
 ```

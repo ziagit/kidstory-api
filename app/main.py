@@ -9,12 +9,13 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import Settings, get_settings
 from .mcp_server import build_mcp_server
-from .routers import categories, health, stories
+from .routers import agents, categories, health, stories
 
 API_DESCRIPTION = (
     "REST API for the Kidstory story catalog. Reads are public; creating, "
     "updating and deleting stories requires the `X-API-Key` header, as does "
-    "`POST /stories/generate`, which drafts a story with Claude. "
+    "`POST /stories/generate`, which drafts a story with Claude, and the "
+    "`/agents/*` endpoints, which run the story and social-media agents. "
     "Premium stories are redacted server-side unless the caller sends a Supabase "
     "access token belonging to a reader who has purchased full access."
 )
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(categories.router)
     app.include_router(stories.router)
+    app.include_router(agents.router)
 
     @app.get("/", tags=["meta"])
     async def root() -> dict[str, str]:
