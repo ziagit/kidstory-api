@@ -112,6 +112,15 @@ async def create_story(payload: StoryCreate) -> Story:
     New stories default to `isPremium: true`, matching the paywall rule that every
     story after the five free ones requires the one-time purchase.
     """
+    return insert_story(payload)
+
+
+def insert_story(payload: StoryCreate, *, created_by: str | None = None) -> Story:
+    """Inserts a story, deriving the slug and cover; shared with the partner route.
+
+    `created_by` names the partner app a story came from (the `created_by`
+    column); the owner's own stories leave it out.
+    """
     explicit_slug = bool(payload.slug and payload.slug.strip())
     base_slug = slugify(payload.slug) if explicit_slug else slugify(payload.title)
     published_at = payload.published_at or datetime.now(timezone.utc)
@@ -128,6 +137,8 @@ async def create_story(payload: StoryCreate) -> Story:
         "is_premium": payload.is_premium,
         "published_at": published_at,
     }
+    if created_by:
+        record["created_by"] = created_by
 
     # Retry on slug collision the same way publishStoryDraft() does — but only when
     # the slug was derived. An explicit slug that's taken is the caller's mistake.

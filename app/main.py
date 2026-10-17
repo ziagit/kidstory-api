@@ -1,21 +1,23 @@
 import secrets
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import Settings, get_settings
-from .mcp_server import build_mcp_server
-from .routers import agents, categories, health, stories
+from .mcp_server import build_mcp_server, build_partner_mcp_server
+from .partners import bearer_token, find_partner
+from .routers import agents, categories, health, partner, stories
 
 API_DESCRIPTION = (
     "REST API for the Kidstory story catalog. Reads are public; creating, "
     "updating and deleting stories requires the `X-API-Key` header, as do the "
     "`/agents/*` endpoints, which run the story and social-media agents: every "
-    "story is written by the story agent. "
+    "story is written by the story agent. Partner apps create stories with "
+    "their own key through `POST /partner/stories` or the `/partner/mcp` server. "
     "Premium stories are redacted server-side unless the caller sends a Supabase "
     "access token belonging to a reader who has purchased full access."
 )
@@ -39,6 +41,27 @@ class BearerTokenGate:
             if not presented or not secrets.compare_digest(presented, self.token):
                 response = JSONResponse({"detail": "Invalid or missing bearer token."}, status_code=401)
                 await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
+class PartnerKeyGate:
+    """Requires a valid, active partner key (`Authorization: Bearer <key>`) on /partner/mcp."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            header = dict(scope["headers"]).get(b"authorization", b"").decode("latin-1")
+            try:
+                partner = find_partner(bearer_token(header))
+            except HTTPException as exc:
+                partner, refusal = None, JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+            else:
+                refusal = JSONResponse({"detail": "Invalid, revoked or missing partner key."}, status_code=401)
+            if partner is None:
+                await refusal(scope, receive, send)
                 return
         await self.app(scope, receive, send)
 
@@ -69,7 +92,9 @@ def create_app() -> FastAPI:
         # The Starlette app streamable_http_app() returns defines its own lifespan,
         # but mounting it doesn't propagate that automatically — it has to be
         # entered here so the session manager's task group is actually running.
-        async with app.state.mcp_server.session_manager.run():
+        async with AsyncExitStack() as stack:
+            await stack.enter_async_context(app.state.mcp_server.session_manager.run())
+            await stack.enter_async_context(app.state.partner_mcp_server.session_manager.run())
             yield
 
     app = FastAPI(title="Kidstory API", description=API_DESCRIPTION, version="0.2.0", lifespan=lifespan)
@@ -86,10 +111,17 @@ def create_app() -> FastAPI:
     app.include_router(categories.router)
     app.include_router(stories.router)
     app.include_router(agents.router)
+    app.include_router(partner.router)
 
     @app.get("/", tags=["meta"])
     async def root() -> dict[str, str]:
-        return {"name": "Kidstory API", "docs": "/docs", "health": "/health", "mcp": "/mcp"}
+        return {
+            "name": "Kidstory API",
+            "docs": "/docs",
+            "health": "/health",
+            "mcp": "/mcp",
+            "partnerMcp": "/partner/mcp",
+        }
 
     # Write and generate tools exist behind a bearer token, or — explicit opt-in —
     # on the open endpoint. See mcp_server.py and MCP_PUBLIC_WRITES in config.py.
@@ -106,6 +138,18 @@ def create_app() -> FastAPI:
     )
     if settings.mcp_bearer_token:
         mcp_app = BearerTokenGate(mcp_app, settings.mcp_bearer_token)
+
+    # Partner apps get their own MCP server at /partner/mcp, behind their keys.
+    partner_mcp_server = build_partner_mcp_server(app)
+    app.state.partner_mcp_server = partner_mcp_server
+    partner_mcp_app = partner_mcp_server.streamable_http_app(
+        host="0.0.0.0",
+        transport_security=_transport_security(settings),
+        stateless_http=settings.mcp_stateless,
+        json_response=settings.mcp_stateless,
+    )
+    # Mounted after the routers, so POST /partner/stories still reaches its route.
+    app.mount("/partner", PartnerKeyGate(partner_mcp_app))
 
     # Mounted last (and at root) so it only catches paths — like /mcp — that don't
     # match one of the explicit routes registered above.

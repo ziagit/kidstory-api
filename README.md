@@ -32,9 +32,11 @@ client, comes from the story agent (`POST /agents/story`), which runs on Claude
 | `POST` | `/stories` | `X-API-Key` | Create a story |
 | `POST` | `/agents/story` | `X-API-Key` | Run the story agent: write or revise a story and check it (nothing saved) |
 | `POST` | `/agents/social` | `X-API-Key` | Run the social agent: write and publish posts for a published story |
+| `POST` | `/partner/stories` | partner key | For partner apps: the story agent writes a story about a topic and publishes it |
 | `PATCH` | `/stories/{slug}` | `X-API-Key` | Partial update |
 | `DELETE` | `/stories/{slug}` | `X-API-Key` | Delete a story |
 | `POST` | `/mcp` | optional bearer | MCP endpoint (see below) |
+| `POST` | `/partner/mcp` | partner key | MCP endpoint for partner apps (see below) |
 
 Interactive docs at `/docs` once running.
 
@@ -155,6 +157,38 @@ error }], "notes", "steps" }`. A rejected post shows up as `failed`; it doesn't 
 request. YouTube isn't part of the agent: its upload needs ffmpeg, so it stays in the
 Nuxt app.
 
+### Partner apps
+
+Other people's apps and agents can create stories with keys of their own. They send a
+topic only: the story agent writes every word, treats the topic as a suggestion rather
+than instructions (it's fenced off in the prompt), may decline it with a
+`decline_request` tool that only partner runs get, and the story is published as soon
+as it passes `submit_story`. It's tagged with the app's name in `stories.created_by`. Hand
+partners [PARTNERS.md](PARTNERS.md): it's written for them.
+
+- **REST:** `POST /partner/stories` with `Authorization: Bearer <partner key>` and
+  `{ "topic", "category"?, "ageRange"? }`. It returns `201` with
+  `{ story, url, notes }`.
+- **MCP:** `/partner/mcp`, a separate server gated on a partner key. It has the three
+  read tools plus `create_story`, which forwards the caller's key to the REST route. It
+  has no edit, delete or raw-create tools, whatever `MCP_PUBLIC_WRITES` says.
+- **Limits:** `partner_apps.daily_limit` runs per UTC day, counted when a run starts, so
+  declined and failed runs count too. Over the limit is a `429`.
+
+Setup, once: run the site repo's `supabase/migrations/003_partner_apps.sql` in the Supabase
+SQL Editor. It adds the `partner_apps` table (RLS on, no policies, service role only) and
+`stories.created_by`. Then manage keys from this folder:
+
+```bash
+.venv/bin/python -m app.partner_cli issue "Acme Bedtime Bot" --daily-limit 5
+.venv/bin/python -m app.partner_cli list
+.venv/bin/python -m app.partner_cli revoke "Acme Bedtime Bot"
+```
+
+`issue` prints the key once; only its SHA-256 hash is stored. Partner stories don't go
+through the Nuxt publish pipeline, so there's no new-story email and no social or
+YouTube post for them.
+
 ### MCP
 
 The same catalog is exposed to MCP clients (ChatGPT / Claude connectors, Claude Code) at
@@ -246,8 +280,10 @@ app/
   schemas.py          Pydantic models; camelCase responses matching the Nuxt app
   agents/             The story and social agents: Claude client + tool runner (base.py) and their tools
   social.py           Facebook / Instagram Graph API calls used by the social agent
+  partners.py         Partner app keys: lookup by hash, the auth dependency, daily limit
+  partner_cli.py      `python -m app.partner_cli`: issue, list and revoke partner keys
   mcp_server.py       MCP tools wrapping the REST endpoints in-process
   cover_image.py      Port of the site's Pollinations cover-URL formula
-  routers/            health, categories, stories, agents
+  routers/            health, categories, stories, agents, partner
 tests/                pytest suite + in-memory Supabase fake + fake Claude
 ```

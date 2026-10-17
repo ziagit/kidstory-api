@@ -192,6 +192,23 @@ class StoryAgentResponse(CamelModel):
     history: list[ChatMessage]
 
 
+class PartnerStoryRequest(CamelModel):
+    # What the partner app wants a story about. The story agent writes every word.
+    topic: Annotated[str, Field(min_length=3, max_length=300)]
+    # Fixed when given; otherwise the agent picks what the catalog is short on.
+    category: CategorySlug | None = None
+    age_range: AgeRange | None = None
+
+
+class PartnerStoryResponse(CamelModel):
+    # The published story, as GET /stories/{slug} returns it to a reader with full access.
+    story: Story
+    # Where it lives on the site.
+    url: str
+    # The agent's one-line account of why it wrote it this way.
+    notes: str
+
+
 SocialPlatform = Literal["facebook", "instagram"]
 
 
