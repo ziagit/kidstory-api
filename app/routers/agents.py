@@ -3,8 +3,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..agents.base import AgentError
 from ..agents.social_agent import run_social_agent
 from ..agents.story_agent import run_story_agent
-from ..schemas import SocialAgentRequest, SocialAgentResponse, StoryAgentRequest, StoryAgentResponse
-from ..security import require_api_key
+from ..agents.support_agent import run_support_agent
+from ..schemas import (
+    SocialAgentRequest,
+    SocialAgentResponse,
+    StoryAgentRequest,
+    StoryAgentResponse,
+    SupportAgentRequest,
+    SupportAgentResponse,
+)
+from ..security import current_user_id, has_full_access, require_api_key
 
 router = APIRouter(prefix="/agents", tags=["agents"], dependencies=[Depends(require_api_key)])
 
@@ -45,3 +53,25 @@ async def social_agent(payload: SocialAgentRequest) -> SocialAgentResponse:
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return SocialAgentResponse(posts=posts, notes=notes, steps=steps)
+
+
+@router.post("/support", response_model=SupportAgentResponse)
+async def support_agent(
+    payload: SupportAgentRequest, user_id: str | None = Depends(current_user_id)
+) -> SupportAgentResponse:
+    """Runs the support agent on one message from the site's chat bubble.
+
+    Forward the reader's Supabase token as `Authorization: Bearer <jwt>` so the
+    agent knows whether they're signed in and have Full Access. The agent only
+    reads the catalog; when it can't help, `handoff` says what to pass to the owner.
+    """
+    try:
+        reply, handoff, steps, history = await run_support_agent(
+            message=payload.message,
+            history=payload.history,
+            signed_in=user_id is not None,
+            has_access=has_full_access(user_id),
+        )
+    except AgentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return SupportAgentResponse(reply=reply, handoff=handoff, steps=steps, history=history)

@@ -1,4 +1,4 @@
-"""The loop both agents share: Claude, a set of tools, and the SDK's tool runner.
+"""The loop every agent shares: Claude, a set of tools, and the SDK's tool runner.
 
 The tool runner sends the request, runs whichever tools Claude calls, feeds the
 results back and repeats until Claude answers without a tool call (or the

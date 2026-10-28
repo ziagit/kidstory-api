@@ -234,3 +234,27 @@ class SocialAgentResponse(CamelModel):
     posts: list[SocialPost]
     notes: str
     steps: list[AgentStep]
+
+
+class SupportAgentRequest(CamelModel):
+    # What the reader just typed into the chat bubble.
+    message: Annotated[str, Field(min_length=1, max_length=1000)]
+    # Earlier turns of the chat, as returned by the last call. Trimmed server-side.
+    history: Annotated[list[ChatMessage], Field(max_length=40)] = []
+
+
+class SupportHandoff(CamelModel):
+    """A conversation the agent passed to the owner: the Nuxt app emails it on."""
+
+    summary: str
+    # What the reader gave; None when they're signed in (their account email applies).
+    contact_email: str | None = None
+
+
+class SupportAgentResponse(CamelModel):
+    reply: str
+    # Set when the agent handed the conversation to the owner this turn.
+    handoff: SupportHandoff | None = None
+    steps: list[AgentStep]
+    # The conversation including this turn, for the client to send back next time.
+    history: list[ChatMessage]

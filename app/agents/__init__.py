@@ -4,4 +4,6 @@
   revises it until it passes the catalog's checks.
 - social_agent: writes a post per platform for a published story, checks
   recent posts so it doesn't repeat itself, and publishes them.
+- support_agent: answers readers in the site's chat bubble, recommends stories,
+  and hands anything it can't resolve to the owner.
 """

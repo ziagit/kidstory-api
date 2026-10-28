@@ -32,6 +32,7 @@ client, comes from the story agent (`POST /agents/story`), which runs on Claude
 | `POST` | `/stories` | `X-API-Key` | Create a story |
 | `POST` | `/agents/story` | `X-API-Key` | Run the story agent: write or revise a story and check it (nothing saved) |
 | `POST` | `/agents/social` | `X-API-Key` | Run the social agent: write and publish posts for a published story |
+| `POST` | `/agents/support` | `X-API-Key` | Run the support agent on one message from the site's chat bubble |
 | `POST` | `/partner/stories` | partner key | For partner apps: the story agent writes a story about a topic and publishes it |
 | `PATCH` | `/stories/{slug}` | `X-API-Key` | Partial update |
 | `DELETE` | `/stories/{slug}` | `X-API-Key` | Delete a story |
@@ -104,7 +105,7 @@ publish pipeline and still run from `/studio` and the daily cron.
 
 ### Agents
 
-Two Claude agents run here, both on the SDK's tool runner (`app/agents/`). Each one decides
+Three Claude agents run here, all on the SDK's tool runner (`app/agents/`). Each one decides
 its own steps: it calls tools, reads what they return, and keeps going until it's done.
 They use `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` (default `claude-opus-5-5`) through the
 official `anthropic` SDK, at low effort (short stories don't need deep reasoning). They opt
@@ -156,6 +157,17 @@ Response: `{ "posts": [{ platform, status: posted|dry_run|skipped|failed, text, 
 error }], "notes", "steps" }`. A rejected post shows up as `failed`; it doesn't fail the
 request. YouTube isn't part of the agent: its upload needs ffmpeg, so it stays in the
 Nuxt app.
+
+**Support agent: `POST /agents/support`.** It answers readers in the site's chat bubble,
+one message per call: how sign-in, the free stories and Full Access work, and which stories
+suit a child (`find_stories`, `story_details`). Its tools only read the catalog. When a
+reader needs something only the owner can do (a refund, a payment that didn't unlock, a
+bug), it calls `hand_off_to_owner`, and the response's `handoff` says what to pass on; the
+Nuxt app emails it to the owner. The reader's message is fenced off in the prompt as their
+own text, never as instructions. Forward the reader's Supabase token as
+`Authorization: Bearer <jwt>` so the agent knows whether they're signed in and have Full
+Access. Body: `{ "message", "history"? }`. Response: `{ "reply", "handoff": { summary,
+contactEmail } | null, "steps", "history" }`; send `history` back with the next message.
 
 ### Partner apps
 
@@ -278,7 +290,7 @@ app/
   supabase_client.py  Anon (read) and service-role (write) clients
   security.py         X-API-Key guard, Supabase JWT, entitlement check
   schemas.py          Pydantic models; camelCase responses matching the Nuxt app
-  agents/             The story and social agents: Claude client + tool runner (base.py) and their tools
+  agents/             The story, social and support agents: Claude client + tool runner (base.py) and their tools
   social.py           Facebook / Instagram Graph API calls used by the social agent
   partners.py         Partner app keys: lookup by hash, the auth dependency, daily limit
   partner_cli.py      `python -m app.partner_cli`: issue, list and revoke partner keys
