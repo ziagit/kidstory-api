@@ -10,12 +10,12 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from .config import Settings, get_settings
 from .mcp_server import build_mcp_server, build_partner_mcp_server
 from .partners import bearer_token, find_partner
-from .routers import agents, categories, health, partner, stories
+from .routers import agents, books, categories, health, partner, stories
 
 API_DESCRIPTION = (
     "REST API for the Kidstory story catalog. Reads are public; creating, "
     "updating and deleting stories requires the `X-API-Key` header, as do the "
-    "`/agents/*` endpoints, which run the story, social-media and support agents: every "
+    "`/agents/*` endpoints, which run the story, books, social-media and support agents: every "
     "story is written by the story agent. Partner apps create stories with "
     "their own key through `POST /partner/stories` or the `/partner/mcp` server. "
     "Premium stories are redacted server-side unless the caller sends a Supabase "
@@ -110,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(categories.router)
     app.include_router(stories.router)
+    app.include_router(books.router)
     app.include_router(agents.router)
     app.include_router(partner.router)
 

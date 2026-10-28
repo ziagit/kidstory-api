@@ -29,9 +29,12 @@ client, comes from the story agent (`POST /agents/story`), which runs on Claude
 | `GET` | `/categories` | — | The six fixed category slugs and labels |
 | `GET` | `/stories` | — | Newest-first listing (no body text) |
 | `GET` | `/stories/{slug}` | optional reader token | One story, paywall-aware |
+| `GET` | `/books` | — | Newest-first Book Picks digests (no body text) |
+| `GET` | `/books/{slug}` | — | One digest: text, the books it names, its sources |
 | `POST` | `/stories` | `X-API-Key` | Create a story |
 | `POST` | `/agents/story` | `X-API-Key` | Run the story agent: write or revise a story and check it (nothing saved) |
 | `POST` | `/agents/social` | `X-API-Key` | Run the social agent: write and publish posts for a published story |
+| `POST` | `/agents/books` | `X-API-Key` | Run the books agent: research children's bestsellers and publish a digest |
 | `POST` | `/agents/support` | `X-API-Key` | Run the support agent on one message from the site's chat bubble |
 | `POST` | `/partner/stories` | partner key | For partner apps: the story agent writes a story about a topic and publishes it |
 | `PATCH` | `/stories/{slug}` | `X-API-Key` | Partial update |
@@ -105,7 +108,7 @@ publish pipeline and still run from `/studio` and the daily cron.
 
 ### Agents
 
-Three Claude agents run here, all on the SDK's tool runner (`app/agents/`). Each one decides
+Four Claude agents run here, all on the SDK's tool runner (`app/agents/`). Each one decides
 its own steps: it calls tools, reads what they return, and keeps going until it's done.
 They use `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` (default `claude-opus-5-5`) through the
 official `anthropic` SDK, at low effort (short stories don't need deep reasoning). They opt
@@ -168,6 +171,22 @@ own text, never as instructions. Forward the reader's Supabase token as
 `Authorization: Bearer <jwt>` so the agent knows whether they're signed in and have Full
 Access. Body: `{ "message", "history"? }`. Response: `{ "reply", "handoff": { summary,
 contactEmail } | null, "steps", "history" }`; send `history` back with the next message.
+
+**Books agent: `POST /agents/books`.** It writes the daily Book Picks digest on the
+children's books selling best. It looks at recent digests so today's takes a different
+angle (an age band, a genre, a new release), searches the web with Anthropic's server-side
+web search (`web_search_20250305`, up to 8 searches), and submits a digest with
+`publish_digest`: 3–5 paragraphs (180–500 words), 3–8 books with author, ages and a
+one-line why, and at least two sources. Every source must be a page its searches returned
+this run, so it can't cite a made-up list. The digest is saved to the `book_digests`
+table (created by the Nuxt repo's `supabase/migrations/004_book_digests.sql`; until then
+the endpoint and `GET /books` answer 503) and read back through `GET /books`. Body:
+`{ "focus"?, "dryRun"? }`. Response: `{ "digest", "published", "notes", "steps" }`. Share
+a digest with `POST /agents/social` and `{ "slug", "kind": "books" }`. Its Claude calls
+get a 150s timeout since they run searches; a run takes about a minute.
+
+The basic search tool is deliberate: `web_search_20260209` runs its searches from code in a
+sandbox, and when that code crashed it repeated the same search until `max_uses` ran out.
 
 ### Partner apps
 
@@ -290,7 +309,7 @@ app/
   supabase_client.py  Anon (read) and service-role (write) clients
   security.py         X-API-Key guard, Supabase JWT, entitlement check
   schemas.py          Pydantic models; camelCase responses matching the Nuxt app
-  agents/             The story, social and support agents: Claude client + tool runner (base.py) and their tools
+  agents/             The story, books, social and support agents: Claude client + tool runner (base.py) and their tools
   social.py           Facebook / Instagram Graph API calls used by the social agent
   partners.py         Partner app keys: lookup by hash, the auth dependency, daily limit
   partner_cli.py      `python -m app.partner_cli`: issue, list and revoke partner keys

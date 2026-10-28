@@ -214,6 +214,8 @@ SocialPlatform = Literal["facebook", "instagram"]
 
 class SocialAgentRequest(CamelModel):
     slug: Annotated[str, Field(min_length=1, max_length=200)]
+    # What `slug` names: a story, or a Book Picks digest (POST /agents/books).
+    kind: Literal["story", "books"] = "story"
     # Origin the story links point at. Defaults to SITE_URL.
     site_url: str | None = None
     # Write the posts but don't publish them — for checking the agent's output.
@@ -258,3 +260,62 @@ class SupportAgentResponse(CamelModel):
     steps: list[AgentStep]
     # The conversation including this turn, for the client to send back next time.
     history: list[ChatMessage]
+
+
+class BookPick(CamelModel):
+    """One book a digest names."""
+
+    title: str
+    author: str
+    # Free text from the agent, e.g. "3-5" or "8-12".
+    ages: str
+    # One sentence on who it suits and why children like it.
+    why: str
+
+
+class DigestSource(CamelModel):
+    title: str
+    url: str
+
+
+class BookDigestSummary(CamelModel):
+    """A Book Picks digest without its text, for listings."""
+
+    slug: str
+    title: str
+    emoji: str
+    excerpt: str
+    cover_image_url: str | None = None
+    published_at: datetime
+
+
+class BookDigest(BookDigestSummary):
+    """A Book Picks digest: the books agent's research on what children's books are selling."""
+
+    body: list[str]
+    books: list[BookPick]
+    sources: list[DigestSource]
+
+
+class BookDigestList(CamelModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[BookDigestSummary]
+
+
+class BooksAgentRequest(CamelModel):
+    # An angle to take ("picture books", "middle grade fantasy"). Left out, the
+    # agent picks one the recent digests didn't cover.
+    focus: Annotated[str, Field(max_length=300)] | None = None
+    # Research and write the digest, but don't save it.
+    dry_run: bool = False
+
+
+class BooksAgentResponse(CamelModel):
+    digest: BookDigest
+    # False for a dry run.
+    published: bool
+    # The agent's one-line account of the angle it chose.
+    notes: str
+    steps: list[AgentStep]

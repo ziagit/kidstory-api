@@ -1,6 +1,6 @@
-"""The social agent: writes and publishes a post per platform for a new story.
+"""The social agent: writes and publishes a post per platform for a new story or Book Picks digest.
 
-It reads the story, checks the last few posts on each account so the new one
+It reads the story (or digest), checks the last few posts on each account so the new one
 doesn't open the same way or reuse the same hashtags, writes copy that suits
 each platform, and publishes it with that platform's tool. The link and the
 image are fixed by the server. The agent only controls the words, and the
@@ -32,23 +32,25 @@ INSTAGRAM_MAX_CHARS = 2200  # Instagram's own caption limit
 INSTAGRAM_MAX_HASHTAGS = 30  # Instagram's own hashtag limit
 
 SYSTEM_PROMPT = """\
-You share new Kidstory stories on Kidstory's social media accounts. Kidstory \
-publishes short illustrated stories for children aged 3 to 12; the people who \
-read these posts are parents, grandparents and teachers.
+You share what Kidstory publishes on Kidstory's social media accounts. Kidstory \
+publishes short illustrated stories for children aged 3 to 12, and a daily Book \
+Picks digest on the children's books that are selling best. The people who read \
+these posts are parents, grandparents and teachers.
 
-For the story you're given, write a post for each platform you have a tool for \
-and publish it. Check recent_posts for that platform first, so the new post \
+For the story or digest you're given, write a post for each platform you have a \
+tool for and publish it. Check recent_posts for that platform first, so the new post \
 doesn't open the same way or reuse the same hashtags as the last few.
 
 Facebook: one to three short sentences that make a parent want to read the story \
-tonight. The story link is attached for you, so don't include a URL.
+tonight (or, for a digest, see which books made the list). The link is attached \
+for you, so don't include a URL.
 
-Instagram: a caption of up to about 100 words: a hook, a line about the story, \
-the story URL as plain text with a nudge to use the link in the bio (links in \
+Instagram: a caption of up to about 100 words: a hook, a line about the story or \
+digest, its URL as plain text with a nudge to use the link in the bio (links in \
 captions aren't tappable), then three to eight relevant hashtags.
 
 Write warmly and plainly. No clickbait, no shouting in capitals, nothing the story \
-doesn't support, and never address children directly or ask them to do anything \
+or digest doesn't support, and never address children directly or ask them to do anything \
 online. If a post tool returns an error, fix the post and try once more; if it \
 fails again, move on. Finish with one sentence saying what you posted."""
 
@@ -142,14 +144,14 @@ class SocialAgentRun:
             """Publishes the story's cover image on Kidstory's Instagram with this caption.
 
             Args:
-                caption: The caption, including the story URL as plain text and the hashtags.
+                caption: The caption, including the link URL as plain text and the hashtags.
             """
             caption = caption.strip()
             problems = []
             if not caption or len(caption) > INSTAGRAM_MAX_CHARS:
                 problems.append(f"The caption must be 1 to {INSTAGRAM_MAX_CHARS} characters.")
             if self.story_url not in caption:
-                problems.append(f"Include the story URL as plain text: {self.story_url}")
+                problems.append(f"Include the URL as plain text: {self.story_url}")
             if len(HASHTAG.findall(caption)) > INSTAGRAM_MAX_HASHTAGS:
                 problems.append(f"Use at most {INSTAGRAM_MAX_HASHTAGS} hashtags.")
             if problems:
@@ -194,6 +196,20 @@ def configured_platforms() -> list[str]:
 
 def _prompt(story: dict, story_url: str, platforms: list[str]) -> str:
     body = "\n\n".join(story.get("body") or [])
+    if "books" in story:
+        books = "\n".join(f"- {b.get('title')} by {b.get('author')} ({b.get('ages')})" for b in story["books"] or [])
+        return "\n".join(
+            [
+                f"Share today's Book Picks digest on: {', '.join(platforms)}.",
+                f"Digest URL: {story_url}",
+                f"Title: {story['title']} {story.get('emoji') or ''}".rstrip(),
+                f"Excerpt: {story['excerpt']}",
+                "Books it names:",
+                books,
+                "",
+                body,
+            ]
+        )
     return "\n".join(
         [
             f"Share this new story on: {', '.join(platforms)}.",
@@ -208,19 +224,21 @@ def _prompt(story: dict, story_url: str, platforms: list[str]) -> str:
 
 
 async def run_social_agent(
-    *, slug: str, site_url: str | None = None, dry_run: bool = False
+    *, slug: str, kind: str = "story", site_url: str | None = None, dry_run: bool = False
 ) -> tuple[list[SocialPost], str, list[AgentStep]]:
-    """Runs the agent for one published story; returns a result per platform."""
-    rows = public_client().table("stories").select("*").eq("slug", slug).limit(1).execute().data or []
+    """Runs the agent for one published story or (`kind="books"`) Book Picks digest; returns a result per platform."""
+    table, path = ("book_digests", "books") if kind == "books" else ("stories", "stories")
+    rows = public_client().table(table).select("*").eq("slug", slug).limit(1).execute().data or []
     if not rows:
-        raise AgentError(404, "Story not found.")
+        raise AgentError(404, "Digest not found." if kind == "books" else "Story not found.")
     story = rows[0]
 
     origin = (site_url or get_settings().site_url).rstrip("/")
     run = SocialAgentRun(
         slug=slug,
-        story_url=f"{origin}/stories/{slug}",
-        image_url=story.get("cover_image_url") or build_cover_image_url(story["title"], story["category"], slug),
+        story_url=f"{origin}/{path}/{slug}",
+        image_url=story.get("cover_image_url")
+        or build_cover_image_url(story["title"], story.get("category") or "children's books and reading", slug),
         dry_run=dry_run,
         platforms=configured_platforms(),
     )
