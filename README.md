@@ -37,6 +37,8 @@ client, comes from the story agent (`POST /agents/story`), which runs on Claude
 | `GET` | `/agents/activity` | `X-API-Key` | Agent runs and story publishes from the last `seconds` (default 600), newest first — for the admin dashboard's live machine |
 | `POST` | `/agents/books` | `X-API-Key` | Run the books agent: research children's bestsellers and publish a digest |
 | `POST` | `/agents/support` | `X-API-Key` | Run the support agent on one message from the site's chat bubble |
+| `POST` | `/agents/visitors` | `X-API-Key` | Run the visitors agent: a short report on visitors and time on the site, or an answer to a question |
+| `GET` | `/visitors/stats` | `X-API-Key` | Visitors, visits and time on the site for the last `days` days (1–90), all-time totals and who's on the site now |
 | `POST` | `/partner/stories` | partner key | For partner apps: the story agent writes a story about a topic and publishes it |
 | `PATCH` | `/stories/{slug}` | `X-API-Key` | Partial update |
 | `DELETE` | `/stories/{slug}` | `X-API-Key` | Delete a story |
@@ -163,6 +165,16 @@ own text, never as instructions. Forward the reader's Supabase token as
 `Authorization: Bearer <jwt>` so the agent knows whether they're signed in and have Full
 Access. Body: `{ "message", "history"? }`. Response: `{ "reply", "handoff": { summary,
 contactEmail } | null, "steps", "history" }`; send `history` back with the next message.
+
+**Visitors agent: `POST /agents/visitors`.** The Nuxt site's visit tracker records every
+visit in Supabase `site_visits` (an anonymous browser id, the pages read and the seconds the
+reader was really there; the Nuxt app's migration 006). The agent only reads those numbers,
+already summed up by `app/visitors.py`: `visitor_stats` (a period plus all-time totals and
+who's on the site now), `compare_periods` (this period against the one before) and
+`story_titles`. It writes the owner a short report, or answers `question` if one is given.
+Every number must come from a tool. Body: `{ "days"?: 1–90 (default 7), "question"? }`.
+Response: `{ "report", "steps" }`. `GET /visitors/stats?days=30` returns the same numbers
+for the admin's Visitors page (camelCase; times in seconds; days in Pakistan time).
 
 **Books agent: `POST /agents/books`.** It writes the daily Book Picks digest on the
 children's books selling best. It looks at recent digests so today's takes a different
@@ -301,10 +313,11 @@ app/
   supabase_client.py  Anon (read) and service-role (write) clients
   security.py         X-API-Key guard, Supabase JWT
   schemas.py          Pydantic models; camelCase responses matching the Nuxt app
-  agents/             The story, books, social and support agents: Claude client + tool runner (base.py) and their tools
+  agents/             The story, books, social, support and visitors agents: Claude client + tool runner (base.py) and their tools
   social.py           Facebook / Instagram Graph API calls used by the social agent
   notify.py           The owner's new-story email (Gmail SMTP), sent by the social agent
   activity.py         Records each agent run and story publish in `agent_runs` (best effort)
+  visitors.py         Sums up `site_visits` for GET /visitors/stats and the visitors agent
   youtube.py          Cover-video render (ffmpeg) and YouTube upload, for the social agent
   partners.py         Partner app keys: lookup by hash, the auth dependency, daily limit
   partner_cli.py      `python -m app.partner_cli`: issue, list and revoke partner keys

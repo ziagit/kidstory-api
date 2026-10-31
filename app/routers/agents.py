@@ -8,6 +8,7 @@ from ..agents.books_agent import run_books_agent
 from ..agents.social_agent import run_social_agent
 from ..agents.story_agent import run_story_agent
 from ..agents.support_agent import run_support_agent
+from ..agents.visitors_agent import run_visitors_agent
 from ..schemas import (
     AgentRun,
     BooksAgentRequest,
@@ -18,6 +19,8 @@ from ..schemas import (
     StoryAgentResponse,
     SupportAgentRequest,
     SupportAgentResponse,
+    VisitorsAgentRequest,
+    VisitorsAgentResponse,
 )
 from ..security import current_user_id, require_api_key
 
@@ -99,6 +102,20 @@ async def support_agent(
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return SupportAgentResponse(reply=reply, handoff=handoff, steps=steps, history=history)
+
+
+@router.post("/visitors", response_model=VisitorsAgentResponse)
+async def visitors_agent(payload: VisitorsAgentRequest) -> VisitorsAgentResponse:
+    """Runs the visitors agent: a short report on visitors and time on the site, or an answer to `question`.
+
+    It reads the visit tracker's numbers (the same ones GET /visitors/stats
+    returns) and changes nothing.
+    """
+    try:
+        report, steps = await run_visitors_agent(days=payload.days, question=payload.question)
+    except AgentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return VisitorsAgentResponse(report=report, steps=steps)
 
 
 @router.get("/activity", response_model=list[AgentRun])

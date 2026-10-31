@@ -321,7 +321,7 @@ class AgentRun(CamelModel):
     """One agent run (or story publish), for the admin dashboard's live agent machine."""
 
     id: str
-    agent: Literal["story", "social", "books", "support"]
+    agent: Literal["story", "social", "books", "support", "visitors"]
     # "run", or "publish" for a story going live.
     action: str
     status: Literal["running", "done", "failed"]
@@ -329,3 +329,16 @@ class AgentRun(CamelModel):
     detail: dict[str, Any] = {}
     started_at: datetime
     finished_at: datetime | None = None
+
+
+class VisitorsAgentRequest(CamelModel):
+    # How many days back the report covers, today included.
+    days: Annotated[int, Field(ge=1, le=90)] = 7
+    # A question from the owner about the visit numbers. Left out, the agent writes its usual report.
+    question: Annotated[str, Field(max_length=500)] | None = None
+
+
+class VisitorsAgentResponse(CamelModel):
+    # The agent's report (or answer), in short paragraphs or "- " bullets.
+    report: str
+    steps: list[AgentStep]
