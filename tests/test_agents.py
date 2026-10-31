@@ -12,7 +12,7 @@ import anthropic
 import httpx2
 import pytest
 
-from app import social
+from app import notify, social, youtube
 from app.agents import base
 
 from .conftest import API_KEY
@@ -392,3 +392,90 @@ def test_social_agent_skips_the_model_with_no_accounts(client, claude):
 def test_social_agent_needs_a_published_story(client, claude, accounts):
     response = client.post("/agents/social", json={"slug": "no-such-story"}, headers=HEADERS)
     assert response.status_code == 404
+
+
+@pytest.fixture
+def outbox(monkeypatch, accounts):
+    """Also configures the owner's email and YouTube, recording what would be sent."""
+    monkeypatch.setenv("GMAIL_USER", "owner@kidstory.test")
+    monkeypatch.setenv("GMAIL_APP_PASSWORD", "app-password")
+    monkeypatch.setenv("NOTIFY_EMAILS", "")
+    monkeypatch.setenv("YOUTUBE_CLIENT_ID", "yt-client")
+    monkeypatch.setenv("YOUTUBE_CLIENT_SECRET", "yt-secret")
+    monkeypatch.setenv("YOUTUBE_REFRESH_TOKEN", "yt-refresh")
+    monkeypatch.setenv("FFMPEG_PATH", "/usr/bin/ffmpeg")
+    base.get_settings.cache_clear()
+
+    sent: dict[str, list] = {"email": [], "youtube": []}
+
+    async def send_email(user, app_password, *, to, subject, html, text):
+        sent["email"].append({"user": user, "to": to, "subject": subject, "html": html, "text": text})
+        return "<msg-1@kidstory.test>"
+
+    async def upload_story_video(**kwargs):
+        sent["youtube"].append(kwargs)
+        return "yt-video-1"
+
+    monkeypatch.setattr(notify, "send_email", send_email)
+    monkeypatch.setattr(youtube, "upload_story_video", upload_story_video)
+    return sent
+
+
+def test_social_agent_emails_the_owner_and_uploads_to_youtube(client, claude, outbox):
+    url = "https://kidstory.test/stories/free-story"
+    claude["replies"] += [
+        message(
+            tool_use("email_owner", {"subject": "New story: A Free Story", "note": "A gentle tale for little ones."}, "t1"),
+            # The description forgot the link; the tool sends it back.
+            tool_use("post_to_youtube", {"title": "A Free Story", "description": "A gentle tale."}, "t2"),
+        ),
+        message(tool_use("post_to_youtube", {"title": "A Free Story", "description": f"A gentle tale.\n\nRead it: {url}"}, "t3")),
+        final("Emailed the owner and uploaded to YouTube."),
+    ]
+    response = client.post("/agents/social", json={"slug": "free-story"}, headers=HEADERS)
+    assert response.status_code == 200, response.text
+    posts = {p["platform"]: p for p in response.json()["posts"]}
+
+    assert posts["email"]["status"] == "posted" and posts["email"]["postId"] == "<msg-1@kidstory.test>"
+    (email,) = outbox["email"]
+    assert email["to"] == ["zia.flutter@gmail.com"] and email["subject"] == "New story: A Free Story"
+    # The server adds the story itself after the agent's note.
+    assert "A gentle tale for little ones." in email["html"] and url in email["html"]
+
+    assert posts["youtube"]["status"] == "posted" and posts["youtube"]["postId"] == "yt-video-1"
+    (video,) = outbox["youtube"]
+    assert video["title"] == "A Free Story" and url in video["description"]
+    assert video["ffmpeg"] == "/usr/bin/ffmpeg" and video["image_url"].startswith("https://image.pollinations.ai/")
+    _, missing_link = tool_results(claude["requests"][1])
+    assert missing_link["is_error"] is True and url in result_text(missing_link)
+
+    # Every platform the agent had a tool for is named in its prompt.
+    prompt = claude["requests"][0]["messages"][0]["content"]
+    assert "facebook, instagram, email, youtube" in prompt
+
+
+def test_social_agent_leaves_youtube_out_without_ffmpeg(client, claude, outbox, monkeypatch):
+    monkeypatch.setenv("FFMPEG_PATH", "")
+    monkeypatch.setattr(youtube.shutil, "which", lambda name: None)
+    base.get_settings.cache_clear()
+    claude["replies"] += [final("Nothing to do.")]
+    response = client.post("/agents/social", json={"slug": "free-story", "dryRun": True}, headers=HEADERS)
+    assert response.status_code == 200, response.text
+    youtube_post = next(p for p in response.json()["posts"] if p["platform"] == "youtube")
+    assert youtube_post["status"] == "skipped" and "ffmpeg" in youtube_post["error"]
+    tool_names = {t["name"] for t in claude["requests"][0]["tools"]}
+    assert "post_to_youtube" not in tool_names and "email_owner" in tool_names
+
+
+def test_social_agent_neither_emails_nor_uploads_a_digest(client, claude, outbox, store):
+    store["book_digests"] = [
+        {"slug": "picks-1", "title": "Picks", "emoji": "📚", "excerpt": "Books.", "body": ["Text."], "books": []}
+    ]
+    claude["replies"] += [final("Nothing to do.")]
+    response = client.post("/agents/social", json={"slug": "picks-1", "kind": "books", "dryRun": True}, headers=HEADERS)
+    assert response.status_code == 200, response.text
+    posts = {p["platform"]: p for p in response.json()["posts"]}
+    assert posts["email"]["status"] == posts["youtube"]["status"] == "skipped"
+    assert "Only new stories" in posts["email"]["error"]
+    tool_names = {t["name"] for t in claude["requests"][0]["tools"]}
+    assert not tool_names & {"email_owner", "post_to_youtube"}

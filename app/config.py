@@ -5,6 +5,10 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# Where the new-story email goes when NOTIFY_EMAILS is blank.
+OWNER_EMAIL = "zia.flutter@gmail.com"
+
+
 class Settings(BaseSettings):
     """Environment configuration, mirroring the Nuxt app's runtimeConfig split.
 
@@ -34,6 +38,22 @@ class Settings(BaseSettings):
     facebook_page_access_token: str = ""
     instagram_account_id: str = ""
     instagram_access_token: str = ""
+
+    # The social agent's email to the owner for every new story, sent from the
+    # owner's Gmail with an App Password. Blank leaves the email tool out.
+    gmail_user: str = ""
+    gmail_app_password: str = ""
+    # Comma-separated recipients of that email; blank means the owner.
+    notify_emails: str = ""
+
+    # The social agent's YouTube upload for every new story (OAuth 2.0 refresh
+    # token for the channel owner). Blank leaves the YouTube tool out, and so does
+    # a host without ffmpeg (Vercel): rendering the video needs the binary.
+    youtube_client_id: str = ""
+    youtube_client_secret: str = ""
+    youtube_refresh_token: str = ""
+    # Path to ffmpeg; blank looks it up on PATH.
+    ffmpeg_path: str = ""
 
     # Public origin of the Nuxt site, for the story links the social agent shares.
     # Facebook fetches the link to build its preview card, so it must be reachable.
@@ -65,6 +85,9 @@ class Settings(BaseSettings):
 
     def public_host_list(self) -> list[str]:
         return _split_csv(self.public_hosts)
+
+    def notify_email_list(self) -> list[str]:
+        return _split_csv(self.notify_emails) or [OWNER_EMAIL]
 
 
 def _split_csv(value: str) -> list[str]:

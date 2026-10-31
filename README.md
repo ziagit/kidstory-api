@@ -33,7 +33,7 @@ client, comes from the story agent (`POST /agents/story`), which runs on Claude
 | `GET` | `/books/{slug}` | — | One digest: text, the books it names, its sources |
 | `POST` | `/stories` | `X-API-Key` | Create a story |
 | `POST` | `/agents/story` | `X-API-Key` | Run the story agent: write or revise a story and check it (nothing saved) |
-| `POST` | `/agents/social` | `X-API-Key` | Run the social agent: write and publish posts for a published story |
+| `POST` | `/agents/social` | `X-API-Key` | Run the social agent: share a published story (Facebook, Instagram, owner email, YouTube) |
 | `POST` | `/agents/books` | `X-API-Key` | Run the books agent: research children's bestsellers and publish a digest |
 | `POST` | `/agents/support` | `X-API-Key` | Run the support agent on one message from the site's chat bubble |
 | `POST` | `/partner/stories` | partner key | For partner apps: the story agent writes a story about a topic and publishes it |
@@ -136,17 +136,21 @@ body }, "notes": "why it chose this story (or what it changed)", "steps": [{ "to
 **Social agent: `POST /agents/social`.** It runs for a story that's already published
 (`{ "slug": "...", "dryRun": false }`). It reads the story, checks the last few posts on
 each account (`recent_posts`), then writes and publishes a post for each platform
-(`post_to_facebook`, `post_to_instagram`). The link and the image are fixed by the server,
-so the agent controls only the words. The post tools enforce each platform's limits before
+(`post_to_facebook`, `post_to_instagram`). For a new story it also emails the owner a copy
+(`email_owner`: its subject and note, then the server's cover, story text and link) and
+uploads a 25-second cover-image video to YouTube (`post_to_youtube`: its title and
+description, which must contain the story URL). The link, image, story text and video are
+fixed by the server, so the agent controls only the words. The post tools enforce each platform's limits before
 anything is sent, and an Instagram caption without the story URL is sent back to the agent.
 Each platform gets at most one post per run and at most two attempts.
 
-A platform with blank credentials (`FACEBOOK_*`, `INSTAGRAM_*`) is left out, and with none
-configured no model call is made. `dryRun: true` writes the posts without publishing them.
+A platform with blank credentials (`FACEBOOK_*`, `INSTAGRAM_*`, `GMAIL_*`, `YOUTUBE_*`) is
+left out, and with none configured no model call is made. YouTube is also left out on a host
+without ffmpeg (`FFMPEG_PATH`, else `PATH`), which includes Vercel, and Book Picks digests
+are never emailed or uploaded. `dryRun: true` writes the posts without publishing them.
 Response: `{ "posts": [{ platform, status: posted|dry_run|skipped|failed, text, postId,
 error }], "notes", "steps" }`. A rejected post shows up as `failed`; it doesn't fail the
-request. YouTube isn't part of the agent: its upload needs ffmpeg, so it stays in the
-Nuxt app.
+request.
 
 **Support agent: `POST /agents/support`.** It answers readers in the site's chat bubble,
 one message per call: how sign-in and the (free) stories work, and which stories
@@ -298,6 +302,8 @@ app/
   schemas.py          Pydantic models; camelCase responses matching the Nuxt app
   agents/             The story, books, social and support agents: Claude client + tool runner (base.py) and their tools
   social.py           Facebook / Instagram Graph API calls used by the social agent
+  notify.py           The owner's new-story email (Gmail SMTP), sent by the social agent
+  youtube.py          Cover-video render (ffmpeg) and YouTube upload, for the social agent
   partners.py         Partner app keys: lookup by hash, the auth dependency, daily limit
   partner_cli.py      `python -m app.partner_cli`: issue, list and revoke partner keys
   mcp_server.py       MCP tools wrapping the REST endpoints in-process

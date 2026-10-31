@@ -203,7 +203,7 @@ class PartnerStoryResponse(CamelModel):
     notes: str
 
 
-SocialPlatform = Literal["facebook", "instagram"]
+SocialPlatform = Literal["facebook", "instagram", "email", "youtube"]
 
 
 class SocialAgentRequest(CamelModel):

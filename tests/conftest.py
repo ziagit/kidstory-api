@@ -56,7 +56,17 @@ def client(store, monkeypatch) -> TestClient:
     monkeypatch.setenv("KIDSTORY_API_KEY", API_KEY)
     monkeypatch.setenv("CORS_ORIGINS", "http://localhost:3000")
     # A local .env may hold real social accounts; tests that want them say so.
-    for name in ("FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "INSTAGRAM_ACCOUNT_ID", "INSTAGRAM_ACCESS_TOKEN"):
+    for name in (
+        "FACEBOOK_PAGE_ID",
+        "FACEBOOK_PAGE_ACCESS_TOKEN",
+        "INSTAGRAM_ACCOUNT_ID",
+        "INSTAGRAM_ACCESS_TOKEN",
+        "GMAIL_USER",
+        "GMAIL_APP_PASSWORD",
+        "YOUTUBE_CLIENT_ID",
+        "YOUTUBE_CLIENT_SECRET",
+        "YOUTUBE_REFRESH_TOKEN",
+    ):
         monkeypatch.setenv(name, "")
     get_settings.cache_clear()
 
