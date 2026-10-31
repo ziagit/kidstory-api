@@ -9,14 +9,11 @@ from app.routers import books, health, stories
 from .fakes import FakeClient
 
 API_KEY = "test-api-key"
-ENTITLED_TOKEN = "token-paid"
-FREE_TOKEN = "token-free"
-
-ENTITLED_USER = "11111111-1111-1111-1111-111111111111"
-FREE_USER = "22222222-2222-2222-2222-222222222222"
+READER_TOKEN = "token-reader"
+READER_USER = "11111111-1111-1111-1111-111111111111"
 
 
-def _story(slug: str, *, title: str, premium: bool, published_at: str, **overrides) -> dict:
+def _story(slug: str, *, title: str, published_at: str, **overrides) -> dict:
     row = {
         "slug": slug,
         "title": title,
@@ -29,7 +26,6 @@ def _story(slug: str, *, title: str, premium: bool, published_at: str, **overrid
         "body": ["Opening paragraph.", "Middle paragraph.", "Closing paragraph."],
         "cover_image_url": None,
         "published_at": published_at,
-        "is_premium": premium,
     }
     row.update(overrides)
     return row
@@ -39,18 +35,16 @@ def _story(slug: str, *, title: str, premium: bool, published_at: str, **overrid
 def store() -> dict[str, list[dict]]:
     return {
         "stories": [
-            _story("free-story", title="A Free Story", premium=False, published_at="2026-01-01T00:00:00+00:00"),
+            _story("free-story", title="A Free Story", published_at="2026-01-01T00:00:00+00:00"),
             _story(
-                "premium-story",
-                title="A Premium Story",
-                premium=True,
+                "bedtime-story",
+                title="A Bedtime Story",
                 published_at="2026-02-01T00:00:00+00:00",
                 category="bedtime",
                 age_range="3-5",
                 tags=["sleepy", "moon"],
             ),
         ],
-        "entitlements": [{"user_id": ENTITLED_USER}],
     }
 
 
@@ -66,7 +60,7 @@ def client(store, monkeypatch) -> TestClient:
         monkeypatch.setenv(name, "")
     get_settings.cache_clear()
 
-    fake = FakeClient(store, {ENTITLED_TOKEN: ENTITLED_USER, FREE_TOKEN: FREE_USER})
+    fake = FakeClient(store, {READER_TOKEN: READER_USER})
     for module in (stories, books, security, health, story_agent, books_agent, social_agent, partners, partner_cli):
         monkeypatch.setattr(module, "public_client", lambda: fake, raising=False)
         monkeypatch.setattr(module, "admin_client", lambda: fake, raising=False)

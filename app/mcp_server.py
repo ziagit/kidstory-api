@@ -96,7 +96,6 @@ def build_mcp_server(app: ASGIApp, *, include_writes: bool) -> MCPServer:
         emoji: str = "✨",
         read_time_minutes: int = 2,
         tags: list[str] | None = None,
-        is_premium: bool = True,
         slug: str | None = None,
     ) -> Any:
         """Create a new story. Slug and cover image are derived automatically unless given."""
@@ -109,7 +108,6 @@ def build_mcp_server(app: ASGIApp, *, include_writes: bool) -> MCPServer:
             "emoji": emoji,
             "read_time_minutes": read_time_minutes,
             "tags": tags or [],
-            "is_premium": is_premium,
             "slug": slug,
         }
         return await _request("POST", "/stories", json=payload, headers=_write_headers())
@@ -125,7 +123,6 @@ def build_mcp_server(app: ASGIApp, *, include_writes: bool) -> MCPServer:
         emoji: str | None = None,
         read_time_minutes: int | None = None,
         tags: list[str] | None = None,
-        is_premium: bool | None = None,
     ) -> Any:
         """Partially update a story by slug. Only the fields you pass are changed."""
         payload = {
@@ -137,7 +134,6 @@ def build_mcp_server(app: ASGIApp, *, include_writes: bool) -> MCPServer:
             "emoji": emoji,
             "read_time_minutes": read_time_minutes,
             "tags": tags,
-            "is_premium": is_premium,
         }
         payload = {key: value for key, value in payload.items() if value is not None}
         if not payload:
@@ -198,7 +194,7 @@ def _add_read_tools(server: MCPServer, app: ASGIApp) -> None:
 
     @server.tool()
     async def get_story(slug: str) -> Any:
-        """Get one story by slug. Premium stories are redacted to their opening paragraph."""
+        """Get one story by slug, with its full text."""
         return await _call(app, "GET", f"/stories/{slug}")
 
 

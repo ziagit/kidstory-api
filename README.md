@@ -28,7 +28,7 @@ client, comes from the story agent (`POST /agents/story`), which runs on Claude
 | `GET` | `/health` | — | Liveness plus a Supabase round-trip |
 | `GET` | `/categories` | — | The six fixed category slugs and labels |
 | `GET` | `/stories` | — | Newest-first listing (no body text) |
-| `GET` | `/stories/{slug}` | optional reader token | One story, paywall-aware |
+| `GET` | `/stories/{slug}` | — | One story, full text |
 | `GET` | `/books` | — | Newest-first Book Picks digests (no body text) |
 | `GET` | `/books/{slug}` | — | One digest: text, the books it names, its sources |
 | `POST` | `/stories` | `X-API-Key` | Create a story |
@@ -48,28 +48,16 @@ Interactive docs at `/docs` once running.
 
 `GET /stories` accepts `category`, `ageRange`, `tag`, `q` (case-insensitive search over
 title and excerpt), `limit` (1–100, default 20) and `offset`. It returns
-`{ total, limit, offset, items }`. Story bodies are **never** included in the listing —
-fetching them would leak paywalled text to anyone browsing.
+`{ total, limit, offset, items }`. Story bodies aren't included in the listing;
+fetch one story for its text.
 
 ```bash
 curl "http://localhost:8000/stories?category=bedtime&ageRange=3-5&limit=5"
 ```
 
-### Reading a story (paywall)
+### Reading a story
 
-Mirrors the site's rule exactly: the five oldest stories are free, everything else is
-`isPremium: true`. A premium story returns only its opening paragraph plus
-`locked: true` and `lockedBodyCount` — the rest is withheld from the response itself,
-not just hidden in a UI. To unlock, send the reader's Supabase Auth access token:
-
-```bash
-curl -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-  "http://localhost:8000/stories/some-premium-story"
-```
-
-The token is verified against Supabase Auth and the user must have a row in
-`entitlements` (written only by the site's Stripe webhook). An invalid or expired token
-is treated as signed-out, never as an error.
+Every story is free: `GET /stories/{slug}` returns the whole body to anyone, no token needed.
 
 ### Writing
 
@@ -94,8 +82,7 @@ curl -X POST http://localhost:8000/stories \
 Omitted fields are derived: the **slug** from the title (same `slugify()` rule as the
 Nuxt app, with `-2`, `-3` … appended on collision), the **cover image** from the same
 deterministic Pollinations.ai URL formula (`app/cover_image.py` is a port of
-`server/utils/cover-image.ts`), and `publishedAt` from the clock. New stories default to
-`isPremium: true`, matching the site's paywall rule. Pass `slug` explicitly and a
+`server/utils/cover-image.ts`), and `publishedAt` from the clock. Pass `slug` explicitly and a
 collision returns `409` instead of auto-suffixing.
 
 Unlike the Nuxt publish route, an unknown `category` or `ageRange` is rejected with
@@ -162,9 +149,9 @@ request. YouTube isn't part of the agent: its upload needs ffmpeg, so it stays i
 Nuxt app.
 
 **Support agent: `POST /agents/support`.** It answers readers in the site's chat bubble,
-one message per call: how sign-in, the free stories and Full Access work, and which stories
+one message per call: how sign-in and the (free) stories work, and which stories
 suit a child (`find_stories`, `story_details`). Its tools only read the catalog. When a
-reader needs something only the owner can do (a refund, a payment that didn't unlock, a
+reader needs something only the owner can do (an account problem, a
 bug), it calls `hand_off_to_owner`, and the response's `handoff` says what to pass on; the
 Nuxt app emails it to the owner. The reader's message is fenced off in the prompt as their
 own text, never as instructions. Forward the reader's Supabase token as
@@ -253,7 +240,7 @@ cp .env.example .env   # then fill it in
 `.env` needs the same `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
 `SUPABASE_SERVICE_ROLE_KEY` as the Nuxt app's `.env`, plus a `KIDSTORY_API_KEY` of your
 own (`openssl rand -hex 32`). The anon key is used for reads (RLS-guarded); the
-service-role key is used only for writes and entitlement lookups, exactly as the Nuxt
+service-role key is used only for writes, exactly as the Nuxt
 app splits them. `CORS_ORIGINS` is a comma-separated allowlist of browser origins.
 
 For story generation set `ANTHROPIC_API_KEY` (from the Claude Console). See
@@ -307,7 +294,7 @@ app/
   main.py             App factory: CORS, routers, MCP mount + bearer gate
   config.py           Env-backed settings
   supabase_client.py  Anon (read) and service-role (write) clients
-  security.py         X-API-Key guard, Supabase JWT, entitlement check
+  security.py         X-API-Key guard, Supabase JWT
   schemas.py          Pydantic models; camelCase responses matching the Nuxt app
   agents/             The story, books, social and support agents: Claude client + tool runner (base.py) and their tools
   social.py           Facebook / Instagram Graph API calls used by the social agent

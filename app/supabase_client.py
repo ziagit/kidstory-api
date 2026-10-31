@@ -17,7 +17,7 @@ def public_client() -> Client:
 
 @lru_cache
 def admin_client() -> Client:
-    """Service-role client: bypasses RLS. Writes and entitlement lookups only."""
+    """Service-role client: bypasses RLS. Writes only."""
     settings = get_settings()
     if not settings.supabase_url or not settings.supabase_service_role_key:
         raise HTTPException(status_code=500, detail="Supabase admin credentials are not configured on the server.")

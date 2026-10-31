@@ -9,8 +9,7 @@ class Settings(BaseSettings):
     """Environment configuration, mirroring the Nuxt app's runtimeConfig split.
 
     The anon key is the public, RLS-guarded credential used for reads; the
-    service-role key bypasses RLS and is only ever used for writes and for
-    entitlement lookups. Both point at the same Supabase project as the Nuxt app.
+    service-role key bypasses RLS and is only ever used for writes. Both point at the same Supabase project as the Nuxt app.
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

@@ -18,8 +18,7 @@ API_DESCRIPTION = (
     "`/agents/*` endpoints, which run the story, books, social-media and support agents: every "
     "story is written by the story agent. Partner apps create stories with "
     "their own key through `POST /partner/stories` or the `/partner/mcp` server. "
-    "Premium stories are redacted server-side unless the caller sends a Supabase "
-    "access token belonging to a reader who has purchased full access."
+    "Every story is free to read in full."
 )
 
 

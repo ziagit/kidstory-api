@@ -1,7 +1,7 @@
 """A minimal in-memory stand-in for the Supabase client.
 
 Only the query surface the app actually uses is implemented — enough to exercise
-routing, validation, paywall redaction and the slug-collision retry without a
+routing, validation and the slug-collision retry without a
 network round-trip or real credentials.
 """
 

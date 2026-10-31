@@ -15,7 +15,7 @@ from ..schemas import (
     StorySummary,
     StoryUpdate,
 )
-from ..security import full_access_dependency, require_api_key
+from ..security import require_api_key
 from ..supabase_client import admin_client, public_client
 
 router = APIRouter(prefix="/stories", tags=["stories"])
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/stories", tags=["stories"])
 # Everything except `body` — see StorySummary's docstring for why the listing withholds it.
 SUMMARY_COLUMNS = (
     "slug, title, emoji, excerpt, category, age_range, read_time_minutes, "
-    "tags, cover_image_url, published_at, is_premium"
+    "tags, cover_image_url, published_at"
 )
 
 UNIQUE_VIOLATION = "23505"
@@ -85,33 +85,17 @@ async def list_stories(
 
 
 @router.get("/{slug}", response_model=Story)
-async def get_story(slug: str, unlocked: bool = Depends(full_access_dependency)) -> Story:
-    """A single story. Premium stories are redacted here, not in the client.
-
-    Same rule as the Nuxt route: a paywalled story keeps its opening paragraph as
-    the hook and the rest never enters the response unless the caller's Supabase
-    token maps to a row in `entitlements`.
-    """
+async def get_story(slug: str) -> Story:
+    """A single story, in full. Every story is free to read."""
     row = _fetch_row(slug)
     if not row:
         raise HTTPException(status_code=404, detail="Story not found.")
-
-    story = Story.model_validate(row)
-    if not story.is_premium or unlocked:
-        return story
-
-    return story.model_copy(
-        update={"body": story.body[:1], "locked": True, "locked_body_count": len(story.body)}
-    )
+    return Story.model_validate(row)
 
 
 @router.post("", response_model=Story, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_api_key)])
 async def create_story(payload: StoryCreate) -> Story:
-    """Creates a story. Slug and cover image are derived from the title unless supplied.
-
-    New stories default to `isPremium: true`, matching the paywall rule that every
-    story after the five free ones requires the one-time purchase.
-    """
+    """Creates a story. Slug and cover image are derived from the title unless supplied."""
     return insert_story(payload)
 
 
@@ -134,7 +118,6 @@ def insert_story(payload: StoryCreate, *, created_by: str | None = None) -> Stor
         "read_time_minutes": payload.read_time_minutes,
         "tags": payload.tags,
         "body": payload.body,
-        "is_premium": payload.is_premium,
         "published_at": published_at,
     }
     if created_by:

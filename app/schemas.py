@@ -34,8 +34,7 @@ def _clean_paragraphs(value: list[str]) -> list[str]:
 class StorySummary(CamelModel):
     """A story without its body — what the listing endpoint returns.
 
-    The body is deliberately omitted here for the same reason the Nuxt listing
-    route omits it: fetching it would leak paywalled text to anyone listing stories.
+    The body is left out to keep listing pages small; fetch one story for its text.
     """
 
     slug: str
@@ -48,13 +47,10 @@ class StorySummary(CamelModel):
     tags: list[str]
     cover_image_url: str | None
     published_at: datetime
-    is_premium: bool
 
 
 class Story(StorySummary):
     body: list[str]
-    locked: bool = False
-    locked_body_count: int | None = None
 
 
 class StoryList(CamelModel):
@@ -73,7 +69,6 @@ class StoryCreate(CamelModel):
     emoji: Annotated[str, Field(max_length=16)] = "✨"
     read_time_minutes: Annotated[int, Field(ge=1, le=5)] = 2
     tags: Annotated[list[str], Field(max_length=4)] = []
-    is_premium: bool = True
     # Optional overrides — omit and the API derives them (slug from the title,
     # cover from the Pollinations formula, published_at from the clock).
     slug: str | None = None
@@ -105,7 +100,6 @@ class StoryUpdate(CamelModel):
     emoji: Annotated[str, Field(max_length=16)] | None = None
     read_time_minutes: Annotated[int, Field(ge=1, le=5)] | None = None
     tags: Annotated[list[str], Field(max_length=4)] | None = None
-    is_premium: bool | None = None
     cover_image_url: str | None = None
     published_at: datetime | None = None
 
@@ -201,7 +195,7 @@ class PartnerStoryRequest(CamelModel):
 
 
 class PartnerStoryResponse(CamelModel):
-    # The published story, as GET /stories/{slug} returns it to a reader with full access.
+    # The published story, as GET /stories/{slug} returns it.
     story: Story
     # Where it lives on the site.
     url: str

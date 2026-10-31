@@ -61,8 +61,7 @@ Response, `201 Created`:
     "tags": ["frog", "night"],
     "body": ["...", "...", "..."],
     "coverImageUrl": "https://...",
-    "publishedAt": "2026-10-17T12:00:00Z",
-    "isPremium": true
+    "publishedAt": "2026-10-17T12:00:00Z"
   },
   "url": "https://storyland-sigma.vercel.app/stories/pip-and-the-moonlit-pond",
   "notes": "One sentence from the agent on why it wrote the story this way."

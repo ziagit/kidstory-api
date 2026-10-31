@@ -15,7 +15,7 @@ from ..schemas import (
     SupportAgentRequest,
     SupportAgentResponse,
 )
-from ..security import current_user_id, has_full_access, require_api_key
+from ..security import current_user_id, require_api_key
 
 router = APIRouter(prefix="/agents", tags=["agents"], dependencies=[Depends(require_api_key)])
 
@@ -82,7 +82,7 @@ async def support_agent(
     """Runs the support agent on one message from the site's chat bubble.
 
     Forward the reader's Supabase token as `Authorization: Bearer <jwt>` so the
-    agent knows whether they're signed in and have Full Access. The agent only
+    agent knows whether they're signed in. The agent only
     reads the catalog; when it can't help, `handoff` says what to pass to the owner.
     """
     try:
@@ -90,7 +90,6 @@ async def support_agent(
             message=payload.message,
             history=payload.history,
             signed_in=user_id is not None,
-            has_access=has_full_access(user_id),
         )
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

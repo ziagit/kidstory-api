@@ -1,9 +1,9 @@
 import secrets
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Header, HTTPException, status
 
 from .config import get_settings
-from .supabase_client import admin_client, public_client
+from .supabase_client import public_client
 
 
 async def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
@@ -41,18 +41,3 @@ async def current_user_id(authorization: str | None = Header(default=None)) -> s
     user = getattr(response, "user", None)
     return user.id if user else None
 
-
-def has_full_access(user_id: str | None) -> bool:
-    """Whether this user has purchased full access (a row in `entitlements`).
-
-    Read with the service-role client: `entitlements` has RLS on with no policies,
-    so the anon key can never see it.
-    """
-    if not user_id:
-        return False
-    response = admin_client().table("entitlements").select("user_id").eq("user_id", user_id).limit(1).execute()
-    return bool(response.data)
-
-
-async def full_access_dependency(user_id: str | None = Depends(current_user_id)) -> bool:
-    return has_full_access(user_id)
