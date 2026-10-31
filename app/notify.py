@@ -11,6 +11,7 @@ import asyncio
 import smtplib
 import socket
 from email.message import EmailMessage
+from email.utils import make_msgid
 from html import escape
 
 from .social import SocialError
@@ -56,6 +57,8 @@ async def send_email(user: str, app_password: str, *, to: list[str], subject: st
     msg["From"] = f"Kidstory <{user}>"
     msg["To"] = ", ".join(to)
     msg["Subject"] = subject
+    # smtplib doesn't add one; it's the id the agent's result reports.
+    msg["Message-ID"] = make_msgid(domain="kidstory")
     msg.set_content(text)
     msg.add_alternative(html, subtype="html")
 
@@ -68,4 +71,4 @@ async def send_email(user: str, app_password: str, *, to: list[str], subject: st
         await asyncio.to_thread(send)
     except (smtplib.SMTPException, OSError) as exc:
         raise SocialError(f"Gmail did not send the email: {exc}") from exc
-    return str(msg.get("Message-ID") or "sent")
+    return str(msg["Message-ID"])
