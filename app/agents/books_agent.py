@@ -17,6 +17,7 @@ from anthropic import beta_async_tool
 from anthropic.lib.tools import ToolError
 from postgrest.exceptions import APIError
 
+from .. import activity
 from ..cover_image import build_cover_image_url
 from ..routers.stories import slugify
 from ..schemas import AgentStep, BookDigest, BookPick, DigestSource
@@ -272,6 +273,15 @@ def _prompt(focus: str | None) -> str:
 async def run_books_agent(
     *, focus: str | None = None, dry_run: bool = False
 ) -> tuple[BookDigest, str, list[AgentStep]]:
+    """Runs the agent and records the run, with the digest it saved."""
+    with activity.tracked("books", dry_run=dry_run or None) as log:
+        digest, notes, steps = await _run_books_agent(focus=focus, dry_run=dry_run)
+        if not dry_run:
+            log.detail["published"] = digest.slug
+        return digest, notes, steps
+
+
+async def _run_books_agent(*, focus: str | None, dry_run: bool) -> tuple[BookDigest, str, list[AgentStep]]:
     """Runs the agent; returns the accepted digest (saved unless `dry_run`), its note and the steps it took."""
     if not dry_run:
         # Fail before spending searches and Claude calls on a digest that can't be saved.

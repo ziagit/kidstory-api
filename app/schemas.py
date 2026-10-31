@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
@@ -167,6 +167,8 @@ class StoryAgentRequest(CamelModel):
     # Earlier turns of a /studio conversation, as returned by the last call.
     # Trimmed server-side.
     history: list[ChatMessage] = []
+    # What asked for the story, for the admin dashboard's activity view.
+    source: Literal["studio", "cron", "partner", "mcp"] | None = None
 
 
 class AgentStep(CamelModel):
@@ -313,3 +315,17 @@ class BooksAgentResponse(CamelModel):
     # The agent's one-line account of the angle it chose.
     notes: str
     steps: list[AgentStep]
+
+
+class AgentRun(CamelModel):
+    """One agent run (or story publish), for the admin dashboard's live agent machine."""
+
+    id: str
+    agent: Literal["story", "social", "books", "support"]
+    # "run", or "publish" for a story going live.
+    action: str
+    status: Literal["running", "done", "failed"]
+    # What started it and where its work went, e.g. {"source": "studio"} or {"platforms": ["facebook"]}.
+    detail: dict[str, Any] = {}
+    started_at: datetime
+    finished_at: datetime | None = None

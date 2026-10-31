@@ -479,3 +479,73 @@ def test_social_agent_neither_emails_nor_uploads_a_digest(client, claude, outbox
     assert "Only new stories" in posts["email"]["error"]
     tool_names = {t["name"] for t in claude["requests"][0]["tools"]}
     assert not tool_names & {"email_owner", "post_to_youtube"}
+
+
+# --- agent activity (the admin dashboard's live machine) -------------------
+
+GOOD_SUBMISSION = {
+    "title": "Olive and the Quiet Forest",
+    "emoji": "🦉",
+    "excerpt": "Olive the owl can't sleep in the silent forest, so she makes a song of her own.",
+    "category": "bedtime",
+    "age_range": "3-5",
+    "tags": ["owl", "music"],
+    "paragraphs": GOOD_STORY,
+}
+
+
+def test_story_agent_runs_are_recorded_with_their_source(client, claude, store):
+    claude["replies"] += [message(tool_use("submit_story", GOOD_SUBMISSION, "t1")), final("Done.")]
+    response = client.post("/agents/story", json={"source": "studio"}, headers=HEADERS)
+    assert response.status_code == 200, response.text
+
+    (run,) = store["agent_runs"]
+    assert run["agent"] == "story" and run["action"] == "run"
+    assert run["status"] == "done" and run["finished_at"]
+    assert run["detail"] == {"source": "studio"}
+
+    activity = client.get("/agents/activity", headers=HEADERS)
+    assert activity.status_code == 200, activity.text
+    (listed,) = activity.json()
+    assert listed["agent"] == "story" and listed["status"] == "done" and listed["detail"] == {"source": "studio"}
+
+
+def test_a_failed_run_is_recorded_as_failed(client, claude, store):
+    claude["replies"] += [final("I couldn't write one.")]
+    response = client.post("/agents/story", json={"source": "cron"}, headers=HEADERS)
+    assert response.status_code == 502
+    (run,) = store["agent_runs"]
+    assert run["status"] == "failed" and run["detail"] == {"source": "cron"}
+
+
+def test_publishing_a_story_is_recorded(client, store):
+    story = {"title": "A Brand New Tale", "excerpt": "Short.", "body": ["Once upon a time."]}
+    response = client.post("/stories", json=story, headers=HEADERS)
+    assert response.status_code == 201, response.text
+    (run,) = store["agent_runs"]
+    assert run["agent"] == "story" and run["action"] == "publish" and run["status"] == "done"
+    assert run["detail"] == {"slug": "a-brand-new-tale"}
+
+
+def test_social_runs_record_where_they_posted(client, claude, accounts, store):
+    claude["replies"] += [
+        message(tool_use("post_to_facebook", {"message": "A gentle story for tonight."}, "t1")),
+        final("Posted to Facebook."),
+    ]
+    response = client.post("/agents/social", json={"slug": "free-story"}, headers=HEADERS)
+    assert response.status_code == 200, response.text
+    (run,) = store["agent_runs"]
+    assert run["agent"] == "social" and run["status"] == "done"
+    assert run["detail"] == {"kind": "story", "slug": "free-story", "platforms": ["facebook"]}
+
+
+def test_agents_still_run_when_activity_cannot_be_recorded(client, claude, monkeypatch):
+    from app import activity
+
+    def broken():
+        raise RuntimeError("agent_runs table is missing")
+
+    monkeypatch.setattr(activity, "admin_client", broken)
+    claude["replies"] += [message(tool_use("submit_story", GOOD_SUBMISSION, "t1")), final("Done.")]
+    response = client.post("/agents/story", json={}, headers=HEADERS)
+    assert response.status_code == 200, response.text

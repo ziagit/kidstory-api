@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from anthropic import beta_async_tool
 from anthropic.lib.tools import ToolError
 
+from .. import activity
 from ..routers.stories import slugify
 from ..schemas import AGE_RANGES, CATEGORY_SLUGS, AgentStep, ChatMessage, StoryDraft
 from ..supabase_client import public_client
@@ -283,6 +284,25 @@ async def run_story_agent(
     draft: StoryDraft | None = None,
     history: list[ChatMessage] | None = None,
     requested_by: str | None = None,
+    source: str | None = None,
+) -> tuple[StoryDraft, str, list[AgentStep], list[ChatMessage]]:
+    """Runs the agent and records the run (`source` says what started it, e.g. "studio")."""
+    with activity.tracked(
+        "story", source=source or ("partner" if requested_by else None), revision=True if draft else None
+    ):
+        return await _run_story_agent(
+            topic=topic, category=category, age_range=age_range, draft=draft, history=history, requested_by=requested_by
+        )
+
+
+async def _run_story_agent(
+    *,
+    topic: str | None,
+    category: str | None,
+    age_range: str | None,
+    draft: StoryDraft | None,
+    history: list[ChatMessage] | None,
+    requested_by: str | None,
 ) -> tuple[StoryDraft, str, list[AgentStep], list[ChatMessage]]:
     """Runs the agent; returns the accepted draft, its note, the steps it took and the updated history.
 

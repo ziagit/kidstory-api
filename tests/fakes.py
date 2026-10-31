@@ -28,6 +28,10 @@ class FakeSelect:
         self._rows = [row for row in self._rows if row.get(column) == value]
         return self
 
+    def gte(self, column: str, value: Any) -> "FakeSelect":
+        self._rows = [row for row in self._rows if str(row.get(column) or "") >= str(value)]
+        return self
+
     def contains(self, column: str, values: list[Any]) -> "FakeSelect":
         self._rows = [row for row in self._rows if set(values).issubset(set(row.get(column) or []))]
         return self
@@ -100,7 +104,7 @@ class FakeTable:
         return FakeSelect(self._rows, with_count=count is not None)
 
     def insert(self, record: dict[str, Any]) -> FakeWrite:
-        if any(row.get("slug") == record.get("slug") for row in self._rows):
+        if record.get("slug") is not None and any(row.get("slug") == record.get("slug") for row in self._rows):
             raise APIError({"message": "duplicate key value", "code": "23505", "hint": None, "details": None})
         stored = dict(record)
         self._rows.append(stored)

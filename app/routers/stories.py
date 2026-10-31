@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from postgrest.exceptions import APIError
 
+from .. import activity
 from ..cover_image import build_cover_image_url
 from ..schemas import (
     AGE_RANGES,
@@ -142,7 +143,9 @@ def insert_story(payload: StoryCreate, *, created_by: str | None = None) -> Stor
                 continue
             raise HTTPException(status_code=500, detail=exc.message or str(exc)) from exc
 
-        return Story.model_validate((response.data or [candidate])[0])
+        story = Story.model_validate((response.data or [candidate])[0])
+        activity.record("story", "publish", slug=story.slug, partner=created_by)
+        return story
 
     raise HTTPException(status_code=500, detail="Could not generate a unique slug.")
 

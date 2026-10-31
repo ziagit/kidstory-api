@@ -82,7 +82,7 @@ def build_mcp_server(app: ASGIApp, *, include_writes: bool) -> MCPServer:
         Leave out topic, category or age_range to let the agent choose from what the catalog is missing.
         Returns the draft (not saved; pass it to create_story to publish), the agent's notes and its steps.
         """
-        payload = {"topic": topic, "category": category, "ageRange": age_range}
+        payload = {"topic": topic, "category": category, "ageRange": age_range, "source": "mcp"}
         payload = {key: value for key, value in payload.items() if value is not None}
         return await _request("POST", "/agents/story", json=payload, headers=_write_headers())
 

@@ -34,6 +34,7 @@ client, comes from the story agent (`POST /agents/story`), which runs on Claude
 | `POST` | `/stories` | `X-API-Key` | Create a story |
 | `POST` | `/agents/story` | `X-API-Key` | Run the story agent: write or revise a story and check it (nothing saved) |
 | `POST` | `/agents/social` | `X-API-Key` | Run the social agent: share a published story (Facebook, Instagram, owner email, YouTube) |
+| `GET` | `/agents/activity` | `X-API-Key` | Agent runs and story publishes from the last `seconds` (default 600), newest first — for the admin dashboard's live machine |
 | `POST` | `/agents/books` | `X-API-Key` | Run the books agent: research children's bestsellers and publish a digest |
 | `POST` | `/agents/support` | `X-API-Key` | Run the support agent on one message from the site's chat bubble |
 | `POST` | `/partner/stories` | partner key | For partner apps: the story agent writes a story about a topic and publishes it |
@@ -303,6 +304,7 @@ app/
   agents/             The story, books, social and support agents: Claude client + tool runner (base.py) and their tools
   social.py           Facebook / Instagram Graph API calls used by the social agent
   notify.py           The owner's new-story email (Gmail SMTP), sent by the social agent
+  activity.py         Records each agent run and story publish in `agent_runs` (best effort)
   youtube.py          Cover-video render (ffmpeg) and YouTube upload, for the social agent
   partners.py         Partner app keys: lookup by hash, the auth dependency, daily limit
   partner_cli.py      `python -m app.partner_cli`: issue, list and revoke partner keys

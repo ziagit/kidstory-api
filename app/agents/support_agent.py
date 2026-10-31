@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from anthropic import beta_async_tool
 from anthropic.lib.tools import ToolError
 
+from .. import activity
 from ..config import get_settings
 from ..schemas import AGE_RANGES, CATEGORY_LABELS, CATEGORY_SLUGS, AgentStep, ChatMessage, SupportHandoff
 from ..supabase_client import public_client
@@ -164,6 +165,20 @@ async def run_support_agent(
     message: str,
     history: list[ChatMessage] | None = None,
     signed_in: bool = False,
+) -> tuple[str, SupportHandoff | None, list[AgentStep], list[ChatMessage]]:
+    """Answers one chat message and records the run (and whether it handed off to the owner)."""
+    with activity.tracked("support") as log:
+        result = await _run_support_agent(message=message, history=history, signed_in=signed_in)
+        if result[1] is not None:
+            log.detail["handoff"] = True
+        return result
+
+
+async def _run_support_agent(
+    *,
+    message: str,
+    history: list[ChatMessage] | None,
+    signed_in: bool,
 ) -> tuple[str, SupportHandoff | None, list[AgentStep], list[ChatMessage]]:
     """Answers one chat message; returns the reply, any handoff, the steps taken and the updated history.
 

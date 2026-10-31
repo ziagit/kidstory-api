@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from anthropic import beta_async_tool
 from anthropic.lib.tools import ToolError
 
-from .. import notify, social, youtube
+from .. import activity, notify, social, youtube
 from ..config import get_settings
 from ..cover_image import build_cover_image_url
 from ..schemas import AgentStep, SocialPost
@@ -339,6 +339,16 @@ def _prompt(story: dict, story_url: str, platforms: list[str]) -> str:
 
 async def run_social_agent(
     *, slug: str, kind: str = "story", site_url: str | None = None, dry_run: bool = False
+) -> tuple[list[SocialPost], str, list[AgentStep]]:
+    """Runs the agent and records the run, with the platforms it posted to."""
+    with activity.tracked("social", kind=kind, slug=slug, dry_run=dry_run or None) as log:
+        posts, notes, steps = await _run_social_agent(slug=slug, kind=kind, site_url=site_url, dry_run=dry_run)
+        log.detail["platforms"] = [p.platform for p in posts if p.status == "posted"]
+        return posts, notes, steps
+
+
+async def _run_social_agent(
+    *, slug: str, kind: str, site_url: str | None, dry_run: bool
 ) -> tuple[list[SocialPost], str, list[AgentStep]]:
     """Runs the agent for one published story or (`kind="books"`) Book Picks digest; returns a result per platform."""
     table, path = ("book_digests", "books") if kind == "books" else ("stories", "stories")

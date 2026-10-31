@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from postgrest.exceptions import APIError
+
+from .. import activity
 
 from ..agents.base import AgentError
 from ..agents.books_agent import run_books_agent
@@ -6,6 +9,7 @@ from ..agents.social_agent import run_social_agent
 from ..agents.story_agent import run_story_agent
 from ..agents.support_agent import run_support_agent
 from ..schemas import (
+    AgentRun,
     BooksAgentRequest,
     BooksAgentResponse,
     SocialAgentRequest,
@@ -36,6 +40,7 @@ async def story_agent(payload: StoryAgentRequest) -> StoryAgentResponse:
             age_range=payload.age_range,
             draft=payload.draft,
             history=payload.history,
+            source=payload.source,
         )
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -94,3 +99,17 @@ async def support_agent(
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return SupportAgentResponse(reply=reply, handoff=handoff, steps=steps, history=history)
+
+
+@router.get("/activity", response_model=list[AgentRun])
+async def agent_activity(seconds: int = Query(default=600, ge=1, le=86400)) -> list[AgentRun]:
+    """Agent runs and story publishes started in the last `seconds`, newest first.
+
+    The admin dashboard polls this to animate only what's actually running. A run
+    still `running` long after it started was cut off (a serverless timeout).
+    """
+    try:
+        rows = activity.recent(seconds)
+    except APIError as exc:
+        raise HTTPException(status_code=503, detail=f"Agent activity isn't set up on this server: {exc.message or exc}") from exc
+    return [AgentRun.model_validate(row) for row in rows]
