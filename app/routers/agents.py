@@ -98,6 +98,7 @@ async def support_agent(
             message=payload.message,
             history=payload.history,
             signed_in=user_id is not None,
+            voice=payload.voice,
         )
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

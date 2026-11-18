@@ -239,6 +239,8 @@ class SupportAgentRequest(CamelModel):
     message: Annotated[str, Field(min_length=1, max_length=1000)]
     # Earlier turns of the chat, as returned by the last call. Trimmed server-side.
     history: Annotated[list[ChatMessage], Field(max_length=40)] = []
+    # The reader spoke the message and will hear the reply read aloud.
+    voice: bool = False
 
 
 class SupportHandoff(CamelModel):

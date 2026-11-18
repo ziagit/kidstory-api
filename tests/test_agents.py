@@ -549,3 +549,17 @@ def test_agents_still_run_when_activity_cannot_be_recorded(client, claude, monke
     claude["replies"] += [message(tool_use("submit_story", GOOD_SUBMISSION, "t1")), final("Done.")]
     response = client.post("/agents/story", json={}, headers=HEADERS)
     assert response.status_code == 200, response.text
+
+
+# --- support agent ---------------------------------------------------------
+
+
+def test_support_agent_asks_for_a_spoken_reply_in_voice_mode(client, claude):
+    claude["replies"] += [final("Try Dino Learns to Share (/stories/dino-learns-to-share)."), final("Hello!")]
+    response = client.post("/agents/support", json={"message": "A dinosaur story?", "voice": True}, headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json()["reply"] == "Try Dino Learns to Share (/stories/dino-learns-to-share)."
+    assert "read aloud" in json.dumps(claude["requests"][0]["messages"])
+
+    client.post("/agents/support", json={"message": "Hi"}, headers=HEADERS)
+    assert "read aloud" not in json.dumps(claude["requests"][1]["messages"])
