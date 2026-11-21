@@ -623,3 +623,44 @@ def test_studio_assistant_cannot_read_without_a_draft(client, claude):
     body = client.post("/agents/studio", json={"message": "Read it to me"}, headers=HEADERS).json()
     assert body["action"] is None and body["draft"] is None
     assert "no draft" in result_text(tool_results(claude["requests"][1])[0])
+
+
+def test_studio_assistant_deletes_a_story_only_after_naming_it_and_a_yes(client, claude, store):
+    claude["replies"] += [
+        message(tool_use("find_stories", {"query": "bedtime"}, "a1")),
+        # Not asked about yet, so the tool refuses even with a quote from the message.
+        message(tool_use("delete_story", {"slug": "bedtime-story", "owner_confirmation": "delete"}, "a2")),
+        final("Shall I delete A Bedtime Story? This can't be undone."),
+    ]
+    first = client.post("/agents/studio", json={"message": "delete the bedtime story"}, headers=HEADERS).json()
+    assert first["action"] is None and first["target"] is None
+    assert json.loads(result_text(tool_results(claude["requests"][1])[0]))[0]["slug"] == "bedtime-story"
+    assert "Ask first" in result_text(tool_results(claude["requests"][2])[0])
+
+    claude["replies"] += [
+        message(tool_use("delete_story", {"slug": "bedtime-story", "owner_confirmation": "Yes, delete it"}, "a3")),
+        final("Deleting A Bedtime Story now."),
+    ]
+    second = client.post(
+        "/agents/studio", json={"message": "Yes, delete it", "history": first["history"]}, headers=HEADERS
+    ).json()
+    assert second["action"] == "delete"
+    assert second["target"] == {"slug": "bedtime-story", "title": "A Bedtime Story"}
+    # The assistant only asks; the story is still there until the Studio deletes it.
+    assert any(row["slug"] == "bedtime-story" for row in store["stories"])
+
+
+def test_studio_assistant_will_not_delete_without_a_confirmation(client, claude):
+    history = [
+        {"role": "user", "content": "delete the bedtime story"},
+        {"role": "assistant", "content": "Shall I delete A Bedtime Story? This can't be undone."},
+    ]
+    claude["replies"] += [
+        message(tool_use("delete_story", {"slug": "bedtime-story", "owner_confirmation": "yes"}, "a1")),
+        final("No problem, I'll leave it."),
+    ]
+    body = client.post(
+        "/agents/studio", json={"message": "actually, keep it", "history": history}, headers=HEADERS
+    ).json()
+    assert body["action"] is None
+    assert "doesn't confirm" in result_text(tool_results(claude["requests"][1])[0])

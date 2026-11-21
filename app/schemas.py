@@ -250,12 +250,19 @@ class StudioAgentRequest(CamelModel):
     voice: bool = False
 
 
+class StudioStoryRef(CamelModel):
+    slug: str
+    title: str
+
+
 class StudioAgentResponse(CamelModel):
     reply: str
     # The draft after this turn: new, revised, or unchanged.
     draft: StoryDraft | None = None
-    # What the Studio does after the reply: read the draft aloud, or publish it.
-    action: Literal["read", "publish"] | None = None
+    # What the Studio does after the reply: read the draft aloud, publish it, or delete `target`.
+    action: Literal["read", "publish", "delete"] | None = None
+    # The published story to delete, for action "delete".
+    target: StudioStoryRef | None = None
     steps: list[AgentStep]
     history: list[ChatMessage]
     story_history: list[ChatMessage]

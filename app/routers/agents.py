@@ -57,12 +57,13 @@ async def story_agent(payload: StoryAgentRequest) -> StoryAgentResponse:
 async def studio_agent(payload: StudioAgentRequest) -> StudioAgentResponse:
     """Runs the Studio assistant on one message from the owner in /admin/studio.
 
-    It can have the story agent write or revise `draft`. Nothing is saved: `action`
-    asks the Studio to read the draft aloud or publish it (POST /stories), which
-    the assistant only asks for once the owner has confirmed.
+    It can have the story agent write or revise `draft`, and look up published stories.
+    Nothing is saved or deleted here: `action` asks the Studio to read the draft aloud,
+    publish it (POST /stories) or delete `target` (DELETE /stories/{slug}), which the
+    assistant only asks for once the owner has confirmed.
     """
     try:
-        reply, draft, action, steps, history, story_history = await run_studio_assistant(
+        reply, draft, action, target, steps, history, story_history = await run_studio_assistant(
             message=payload.message,
             history=payload.history,
             draft=payload.draft,
@@ -74,7 +75,13 @@ async def studio_agent(payload: StudioAgentRequest) -> StudioAgentResponse:
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return StudioAgentResponse(
-        reply=reply, draft=draft, action=action, steps=steps, history=history, story_history=story_history
+        reply=reply,
+        draft=draft,
+        action=action,
+        target=target,
+        steps=steps,
+        history=history,
+        story_history=story_history,
     )
 
 
