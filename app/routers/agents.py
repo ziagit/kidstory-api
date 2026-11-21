@@ -94,7 +94,7 @@ async def support_agent(
     reads the catalog; when it can't help, `handoff` says what to pass to the owner.
     """
     try:
-        reply, handoff, steps, history = await run_support_agent(
+        reply, handoff, steps, history, read_aloud = await run_support_agent(
             message=payload.message,
             history=payload.history,
             signed_in=user_id is not None,
@@ -102,7 +102,7 @@ async def support_agent(
         )
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    return SupportAgentResponse(reply=reply, handoff=handoff, steps=steps, history=history)
+    return SupportAgentResponse(reply=reply, handoff=handoff, steps=steps, history=history, read_aloud=read_aloud)
 
 
 @router.post("/visitors", response_model=VisitorsAgentResponse)

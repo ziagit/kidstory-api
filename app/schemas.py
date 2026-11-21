@@ -258,6 +258,8 @@ class SupportAgentResponse(CamelModel):
     steps: list[AgentStep]
     # The conversation including this turn, for the client to send back next time.
     history: list[ChatMessage]
+    # The slug of a story the reader asked to hear; the chat reads it aloud after the reply.
+    read_aloud: str | None = None
 
 
 class BookPick(CamelModel):

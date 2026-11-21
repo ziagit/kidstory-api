@@ -563,3 +563,28 @@ def test_support_agent_asks_for_a_spoken_reply_in_voice_mode(client, claude):
 
     client.post("/agents/support", json={"message": "Hi"}, headers=HEADERS)
     assert "read aloud" not in json.dumps(claude["requests"][1]["messages"])
+
+
+def test_support_agent_reads_the_latest_story_aloud(client, claude):
+    claude["replies"] += [
+        message(tool_use("find_stories", {}, "t1")),
+        message(tool_use("read_aloud", {"slug": "/stories/bedtime-story"}, "t2")),
+        final("Here's A Bedtime Story. Let's begin!"),
+    ]
+    response = client.post("/agents/support", json={"message": "Read the last story for me", "voice": True}, headers=HEADERS)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["readAloud"] == "bedtime-story"
+    assert [step["tool"] for step in body["steps"]] == ["find_stories", "read_aloud"]
+    # The newest story comes first, so the agent can pick "the last story".
+    assert json.loads(result_text(tool_results(claude["requests"][1])[0]))[0]["slug"] == "bedtime-story"
+
+
+def test_support_agent_cannot_read_a_story_that_does_not_exist(client, claude):
+    claude["replies"] += [
+        message(tool_use("read_aloud", {"slug": "no-such-story"}, "t1")),
+        final("Sorry, I couldn't find that story."),
+    ]
+    response = client.post("/agents/support", json={"message": "Read me the dragon story"}, headers=HEADERS)
+    assert response.json()["readAloud"] is None
+    assert "No story has the slug" in result_text(tool_results(claude["requests"][1])[0])
