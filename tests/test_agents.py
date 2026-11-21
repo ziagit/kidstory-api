@@ -549,3 +549,77 @@ def test_agents_still_run_when_activity_cannot_be_recorded(client, claude, monke
     claude["replies"] += [message(tool_use("submit_story", GOOD_SUBMISSION, "t1")), final("Done.")]
     response = client.post("/agents/story", json={}, headers=HEADERS)
     assert response.status_code == 200, response.text
+
+
+# --- studio assistant ------------------------------------------------------
+
+OWL_SUBMISSION = {
+    "title": "Olive and the Quiet Forest",
+    "emoji": "🦉",
+    "excerpt": "Olive the owl can't sleep in the silent forest, so she makes a song of her own.",
+    "category": "bedtime",
+    "age_range": "3-5",
+    "tags": ["owl", "music"],
+}
+
+OWL_DRAFT = {
+    "title": "Olive and the Quiet Forest",
+    "emoji": "🦉",
+    "excerpt": OWL_SUBMISSION["excerpt"],
+    "category": "bedtime",
+    "ageRange": "3-5",
+    "readTimeMinutes": 3,
+    "tags": ["owl", "music"],
+    "body": GOOD_STORY,
+}
+
+
+def test_studio_assistant_has_a_story_written_and_read_aloud(client, claude):
+    claude["replies"] += [
+        message(tool_use("write_story", {"request": "an owl who can't sleep"}, "a1")),
+        # The story agent's own turns, inside write_story.
+        message(tool_use("submit_story", {**OWL_SUBMISSION, "paragraphs": GOOD_STORY}, "s1")),
+        final("A gentle bedtime story for the youngest readers."),
+        message(tool_use("read_story", {}, "a2")),
+        final("Here it is: Olive and the Quiet Forest."),
+    ]
+    response = client.post(
+        "/agents/studio", json={"message": "Write me a story about an owl who can't sleep", "voice": True}, headers=HEADERS
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reply"] == "Here it is: Olive and the Quiet Forest."
+    assert body["draft"]["title"] == "Olive and the Quiet Forest"
+    assert body["action"] == "read"
+    assert len(body["history"]) == 2 and len(body["storyHistory"]) == 2
+    assert "read aloud" in json.dumps(claude["requests"][0]["messages"])
+
+
+def test_studio_assistant_publishes_only_once_the_owner_confirms(client, claude):
+    claude["replies"] += [
+        # Not in the owner's message, so the tool refuses.
+        message(tool_use("publish_story", {"owner_confirmation": "yes, publish it"}, "a1")),
+        final("Shall I publish Olive and the Quiet Forest now?"),
+    ]
+    first = client.post("/agents/studio", json={"message": "publish it", "draft": OWL_DRAFT}, headers=HEADERS).json()
+    assert first["action"] is None
+    assert "doesn't confirm" in result_text(tool_results(claude["requests"][1])[0])
+
+    claude["replies"] += [
+        message(tool_use("publish_story", {"owner_confirmation": "Yes, go ahead"}, "a2")),
+        final("Publishing it now."),
+    ]
+    second = client.post(
+        "/agents/studio",
+        json={"message": "Yes, go ahead", "draft": OWL_DRAFT, "history": first["history"]},
+        headers=HEADERS,
+    ).json()
+    assert second["action"] == "publish"
+    assert second["draft"]["title"] == "Olive and the Quiet Forest"
+
+
+def test_studio_assistant_cannot_read_without_a_draft(client, claude):
+    claude["replies"] += [message(tool_use("read_story", {}, "a1")), final("There's no story yet. Want me to write one?")]
+    body = client.post("/agents/studio", json={"message": "Read it to me"}, headers=HEADERS).json()
+    assert body["action"] is None and body["draft"] is None
+    assert "no draft" in result_text(tool_results(claude["requests"][1])[0])

@@ -7,6 +7,7 @@ from ..agents.base import AgentError
 from ..agents.books_agent import run_books_agent
 from ..agents.social_agent import run_social_agent
 from ..agents.story_agent import run_story_agent
+from ..agents.studio_agent import run_studio_assistant
 from ..agents.support_agent import run_support_agent
 from ..agents.visitors_agent import run_visitors_agent
 from ..schemas import (
@@ -17,6 +18,8 @@ from ..schemas import (
     SocialAgentResponse,
     StoryAgentRequest,
     StoryAgentResponse,
+    StudioAgentRequest,
+    StudioAgentResponse,
     SupportAgentRequest,
     SupportAgentResponse,
     VisitorsAgentRequest,
@@ -48,6 +51,31 @@ async def story_agent(payload: StoryAgentRequest) -> StoryAgentResponse:
     except AgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return StoryAgentResponse(draft=draft, notes=notes, steps=steps, history=history)
+
+
+@router.post("/studio", response_model=StudioAgentResponse)
+async def studio_agent(payload: StudioAgentRequest) -> StudioAgentResponse:
+    """Runs the Studio assistant on one message from the owner in /admin/studio.
+
+    It can have the story agent write or revise `draft`. Nothing is saved: `action`
+    asks the Studio to read the draft aloud or publish it (POST /stories), which
+    the assistant only asks for once the owner has confirmed.
+    """
+    try:
+        reply, draft, action, steps, history, story_history = await run_studio_assistant(
+            message=payload.message,
+            history=payload.history,
+            draft=payload.draft,
+            story_history=payload.story_history,
+            category=payload.category,
+            age_range=payload.age_range,
+            voice=payload.voice,
+        )
+    except AgentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return StudioAgentResponse(
+        reply=reply, draft=draft, action=action, steps=steps, history=history, story_history=story_history
+    )
 
 
 @router.post("/social", response_model=SocialAgentResponse)

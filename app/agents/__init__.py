@@ -8,4 +8,7 @@
   publishes a daily Book Picks digest.
 - support_agent: answers readers in the site's chat bubble, recommends stories,
   and hands anything it can't resolve to the owner.
+- studio_agent: the owner's Studio assistant (voice or text): talks ideas
+  through, has the story agent write or revise, and asks the Studio to read
+  the draft aloud or publish it.
 """

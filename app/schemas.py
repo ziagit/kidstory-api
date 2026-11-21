@@ -234,6 +234,33 @@ class SocialAgentResponse(CamelModel):
     steps: list[AgentStep]
 
 
+class StudioAgentRequest(CamelModel):
+    # What the owner just said or typed in /admin/studio.
+    message: Annotated[str, Field(min_length=1, max_length=2000)]
+    # Earlier turns of the conversation, as returned by the last call. Trimmed server-side.
+    history: Annotated[list[ChatMessage], Field(max_length=40)] = []
+    # The story as it stands, if one has been written.
+    draft: StoryDraft | None = None
+    # The story agent's own history for that draft, as returned by the last call.
+    story_history: Annotated[list[ChatMessage], Field(max_length=40)] = []
+    # The owner's picks for a new story; the story agent chooses when left out.
+    category: CategorySlug | None = None
+    age_range: AgeRange | None = None
+    # The owner is talking by voice and hears the reply read aloud.
+    voice: bool = False
+
+
+class StudioAgentResponse(CamelModel):
+    reply: str
+    # The draft after this turn: new, revised, or unchanged.
+    draft: StoryDraft | None = None
+    # What the Studio does after the reply: read the draft aloud, or publish it.
+    action: Literal["read", "publish"] | None = None
+    steps: list[AgentStep]
+    history: list[ChatMessage]
+    story_history: list[ChatMessage]
+
+
 class SupportAgentRequest(CamelModel):
     # What the reader just typed into the chat bubble.
     message: Annotated[str, Field(min_length=1, max_length=1000)]
