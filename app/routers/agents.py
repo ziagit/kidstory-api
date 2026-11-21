@@ -60,7 +60,8 @@ async def studio_agent(payload: StudioAgentRequest) -> StudioAgentResponse:
     It can have the story agent write or revise `draft`, and look up published stories.
     Nothing is saved or deleted here: `action` asks the Studio to read the draft aloud,
     publish it (POST /stories) or delete `target` (DELETE /stories/{slug}), which the
-    assistant only asks for once the owner has confirmed.
+    assistant only asks for once the owner has confirmed, or send `target` (or the
+    draft) to the owner's WhatsApp.
     """
     try:
         reply, draft, action, target, steps, history, story_history = await run_studio_assistant(

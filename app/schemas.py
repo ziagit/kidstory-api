@@ -259,9 +259,10 @@ class StudioAgentResponse(CamelModel):
     reply: str
     # The draft after this turn: new, revised, or unchanged.
     draft: StoryDraft | None = None
-    # What the Studio does after the reply: read the draft aloud, publish it, or delete `target`.
-    action: Literal["read", "publish", "delete"] | None = None
-    # The published story to delete, for action "delete".
+    # What the Studio does after the reply: read the draft aloud, publish it, delete `target`,
+    # or send `target` (or the draft, when `target` is empty) to the owner's WhatsApp.
+    action: Literal["read", "publish", "delete", "whatsapp"] | None = None
+    # The published story to delete or send.
     target: StudioStoryRef | None = None
     steps: list[AgentStep]
     history: list[ChatMessage]

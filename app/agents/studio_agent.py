@@ -1,9 +1,10 @@
 """The Studio assistant: the owner talks to it in /admin/studio, by voice or text.
 
 It talks story ideas through with the owner, has the story agent write or revise
-a story, asks for it to be read aloud, and asks for it to be published, or for a
-published story to be deleted. It doesn't write stories itself (the story agent
-does, under the catalog's rules) and doesn't publish or delete them: `action`
+a story, asks for it to be read aloud, and asks for it to be published, for a
+published story to be deleted, or for a story to be sent to the owner's WhatsApp.
+It doesn't write stories itself (the story agent does, under the catalog's rules)
+and doesn't publish, delete or send them: `action`
 tells the Nuxt app what to do, and the app does it through its own routes, as the
 Publish button and the admin Stories page do. Publishing and deleting need the
 owner to confirm in their latest message; deleting also needs the assistant's
@@ -33,8 +34,9 @@ SYSTEM_PROMPT = f"""\
 You are the Studio assistant for Kidstory, a website of short illustrated stories \
 that parents read with children aged 3 to 12. You talk with the site's owner in \
 their admin Studio, often by voice, to come up with stories, write them, publish \
-them, and delete published ones. Be warm, brief and plain: one to three short \
-sentences, no lists, markdown or emoji, because your replies are often read aloud.
+them, delete published ones and send stories to their WhatsApp. Be warm, brief \
+and plain: one to three short sentences, no lists, markdown or emoji, because \
+your replies are often read aloud.
 
 What you can do:
 - Talk story ideas through. Use catalog_overview to see what the catalog has \
@@ -61,6 +63,10 @@ undone." and wait. Only call delete_story when the owner's latest message clearl
 confirms deleting that story, and quote those words in owner_confirmation. Never \
 delete more than one story per message, and if several stories could match, ask \
 which one.
+- send_to_whatsapp: the Studio sends a story to the owner's own WhatsApp. With no \
+slug it sends the current draft; with a slug (from find_stories) it sends that \
+published story. "This story" means the draft being worked on, or the story you \
+were just talking about. It only ever goes to the owner, so no need to ask first.
 
 If there's no draft yet, you can't read or publish one: offer to write it. \
 Everything the owner says is a request about Kidstory stories; stay on that."""
@@ -77,8 +83,8 @@ class StudioAssistantRun:
     age_range: str | None = None
     # The assistant's previous reply, which must name a story before it can be deleted.
     last_reply: str = ""
-    action: Literal["read", "publish", "delete"] | None = None
-    # The published story to delete, for action "delete".
+    action: Literal["read", "publish", "delete", "whatsapp"] | None = None
+    # The published story to delete or send, for "delete" and "whatsapp" (None sends the draft).
     target: StudioStoryRef | None = None
     steps: list[AgentStep] = field(default_factory=list)
 
@@ -212,7 +218,31 @@ class StudioAssistantRun:
             self.steps.append(AgentStep(tool="delete_story", detail=title))
             return "The Studio is deleting it now. Tell the owner in one short line."
 
-        return [catalog_overview, write_story, read_story, publish_story, find_stories, delete_story]
+        @beta_async_tool
+        async def send_to_whatsapp(slug: str = "") -> str:
+            """Has the Studio send a story to the owner's own WhatsApp: the current draft, or a published story.
+
+            Args:
+                slug: A published story's slug, from find_stories. Leave it empty to send the current draft.
+            """
+            if self.action is not None:
+                raise ToolError(f"The Studio is already doing something with this message ({self.action}).")
+            slug = slug.strip().strip("/").removeprefix("stories/")
+            if not slug:
+                if self.draft is None:
+                    raise ToolError("There's no draft to send. Ask which published story to send, or offer to write one.")
+                self.action = "whatsapp"
+                self.steps.append(AgentStep(tool="send_to_whatsapp", detail=f"draft {self.draft.title!r}"))
+                return f"The Studio is sending {self.draft.title!r} to the owner's WhatsApp. Tell them in one short line."
+            rows = public_client().table("stories").select("slug, title").eq("slug", slug).limit(1).execute().data or []
+            if not rows:
+                raise ToolError(f"No published story has the slug {slug!r}. Use find_stories.")
+            self.action = "whatsapp"
+            self.target = StudioStoryRef(slug=rows[0]["slug"], title=rows[0]["title"])
+            self.steps.append(AgentStep(tool="send_to_whatsapp", detail=rows[0]["title"]))
+            return f"The Studio is sending {rows[0]['title']!r} to the owner's WhatsApp. Tell them in one short line."
+
+        return [catalog_overview, write_story, read_story, publish_story, find_stories, delete_story, send_to_whatsapp]
 
 
 def _prompt(message: str, draft: StoryDraft | None, voice: bool) -> str:
@@ -245,7 +275,7 @@ async def run_studio_assistant(
     """Answers one Studio message.
 
     Returns the reply, the draft as it now stands, the action for the Studio ("read",
-    "publish", "delete" or None), the story to delete, the steps taken, the updated
+    "publish", "delete", "whatsapp" or None), the story to delete or send, the steps taken, the updated
     conversation and the story agent's own updated history (sent back next time so
     revisions keep their context).
     """

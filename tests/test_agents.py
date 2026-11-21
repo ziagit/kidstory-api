@@ -664,3 +664,24 @@ def test_studio_assistant_will_not_delete_without_a_confirmation(client, claude)
     ).json()
     assert body["action"] is None
     assert "doesn't confirm" in result_text(tool_results(claude["requests"][1])[0])
+
+
+def test_studio_assistant_sends_the_draft_or_a_published_story_to_whatsapp(client, claude):
+    claude["replies"] += [message(tool_use("send_to_whatsapp", {}, "a1")), final("Sent to your WhatsApp.")]
+    draft = client.post(
+        "/agents/studio", json={"message": "send this story to my whatsapp", "draft": OWL_DRAFT}, headers=HEADERS
+    ).json()
+    assert draft["action"] == "whatsapp" and draft["target"] is None
+
+    claude["replies"] += [
+        message(tool_use("send_to_whatsapp", {"slug": "free-story"}, "a2")),
+        final("Sending A Free Story to your WhatsApp."),
+    ]
+    published = client.post("/agents/studio", json={"message": "send the free story to my whatsapp"}, headers=HEADERS).json()
+    assert published["action"] == "whatsapp"
+    assert published["target"] == {"slug": "free-story", "title": "A Free Story"}
+
+    claude["replies"] += [message(tool_use("send_to_whatsapp", {}, "a3")), final("There's no story yet.")]
+    nothing = client.post("/agents/studio", json={"message": "send this story to my whatsapp"}, headers=HEADERS).json()
+    assert nothing["action"] is None
+    assert "no draft to send" in result_text(tool_results(claude["requests"][-1])[0])
